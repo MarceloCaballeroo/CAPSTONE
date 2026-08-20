@@ -1,0 +1,24 @@
+# Dependencias
+node_modules/
+__pycache__/
+venv/
+env/
+
+# Variables de entorno y secretos (MUY IMPORTANTE)
+.env
+*.pem
+*.key
+
+# Archivos de logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# Entornos de desarrollo
+.vscode/
+.idea/
+
+# Sistema Operativo
+.DS_Store
+Thumbs.db
