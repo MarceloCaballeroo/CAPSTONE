@@ -1,0 +1,110 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="Mapa Mental" id="mapa-mental-podocare">
+    <mxGraphModel dx="1200" dy="700" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="center" value="PodoCare" style="ellipse;whiteSpace=wrap;html=1;fillColor=#1F4E79;strokeColor=#0d2740;fontColor=#ffffff;fontStyle=1;fontSize=18;" vertex="1" parent="1">
+          <mxGeometry x="620" y="440" width="160" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- Rama: Problema -->
+        <mxCell id="b1" value="Problema" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="280" y="200" width="160" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="b1a" value="Fichas en papel / Excel" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="60" y="140" width="180" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="b1b" value="Riesgo legal (Ley 19.628)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="60" y="200" width="180" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="b1c" value="Pérdida de trazabilidad clínica" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="60" y="260" width="180" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- Rama: Solución -->
+        <mxCell id="b2" value="Solución" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="960" y="200" width="160" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="b2a" value="Ficha clínica digital" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="1160" y="140" width="180" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="b2b" value="Agenda automatizada" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="1160" y="200" width="180" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="b2c" value="Bitácora de auditoría" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="1160" y="260" width="180" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- Rama: Tecnología -->
+        <mxCell id="b3" value="Tecnología" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="280" y="700" width="160" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="b3a" value="Next.js (App Router)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="60" y="780" width="180" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="b3b" value="Supabase (PostgreSQL, Auth, Storage)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="60" y="840" width="180" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="b3c" value="Docker" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="60" y="900" width="180" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- Rama: Equipo -->
+        <mxCell id="b4" value="Equipo" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="960" y="700" width="160" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="b4a" value="Nova — Seguridad y Datos" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="1160" y="780" width="180" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="b4b" value="Martin — Frontend" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="1160" y="840" width="180" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="b4c" value="Marcelo — Infraestructura" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="1160" y="900" width="180" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="b4d" value="Emily — Scrum Master / PO" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="1160" y="960" width="180" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- Rama: Cumplimiento -->
+        <mxCell id="b5" value="Cumplimiento" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="620" y="60" width="160" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="b5a" value="Ley 19.628" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="450" y="0" width="150" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="b5b" value="RLS por fila" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="810" y="0" width="150" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- Edges -->
+        <mxEdge edge="1" parent="1" source="center" target="b1"><mxGeometry relative="1" as="geometry"/></mxEdge>
+        <mxEdge edge="1" parent="1" source="b1" target="b1a"><mxGeometry relative="1" as="geometry"/></mxEdge>
+        <mxEdge edge="1" parent="1" source="b1" target="b1b"><mxGeometry relative="1" as="geometry"/></mxEdge>
+        <mxEdge edge="1" parent="1" source="b1" target="b1c"><mxGeometry relative="1" as="geometry"/></mxEdge>
+
+        <mxEdge edge="1" parent="1" source="center" target="b2"><mxGeometry relative="1" as="geometry"/></mxEdge>
+        <mxEdge edge="1" parent="1" source="b2" target="b2a"><mxGeometry relative="1" as="geometry"/></mxEdge>
+        <mxEdge edge="1" parent="1" source="b2" target="b2b"><mxGeometry relative="1" as="geometry"/></mxEdge>
+        <mxEdge edge="1" parent="1" source="b2" target="b2c"><mxGeometry relative="1" as="geometry"/></mxEdge>
+
+        <mxEdge edge="1" parent="1" source="center" target="b3"><mxGeometry relative="1" as="geometry"/></mxEdge>
+        <mxEdge edge="1" parent="1" source="b3" target="b3a"><mxGeometry relative="1" as="geometry"/></mxEdge>
+        <mxEdge edge="1" parent="1" source="b3" target="b3b"><mxGeometry relative="1" as="geometry"/></mxEdge>
+        <mxEdge edge="1" parent="1" source="b3" target="b3c"><mxGeometry relative="1" as="geometry"/></mxEdge>
+
+        <mxEdge edge="1" parent="1" source="center" target="b4"><mxGeometry relative="1" as="geometry"/></mxEdge>
+        <mxEdge edge="1" parent="1" source="b4" target="b4a"><mxGeometry relative="1" as="geometry"/></mxEdge>
+        <mxEdge edge="1" parent="1" source="b4" target="b4b"><mxGeometry relative="1" as="geometry"/></mxEdge>
+        <mxEdge edge="1" parent="1" source="b4" target="b4c"><mxGeometry relative="1" as="geometry"/></mxEdge>
+        <mxEdge edge="1" parent="1" source="b4" target="b4d"><mxGeometry relative="1" as="geometry"/></mxEdge>
+
+        <mxEdge edge="1" parent="1" source="center" target="b5"><mxGeometry relative="1" as="geometry"/></mxEdge>
+        <mxEdge edge="1" parent="1" source="b5" target="b5a"><mxGeometry relative="1" as="geometry"/></mxEdge>
+        <mxEdge edge="1" parent="1" source="b5" target="b5b"><mxGeometry relative="1" as="geometry"/></mxEdge>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
