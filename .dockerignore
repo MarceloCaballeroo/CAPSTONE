@@ -6,5 +6,3 @@ out
 .env.*
 !.env.example
 npm-debug.log*
-Dockerfile*
-dockerfile
