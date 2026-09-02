@@ -160,13 +160,6 @@
 
 ## RLS Policies
 
-### Provisionamiento de organizaciones
-
-La funcion `crear_organizacion_inicial` se encuentra en
-`supabase/migrations/20260902010000_bootstrap_organizacion.sql`. El registro
-la invoca despues de crear el usuario en Supabase Auth para crear su tenant y
-su perfil administrador de forma idempotente.
-
 ### `usuario`
 
 | Policy | Command | Roles | Action | USING | WITH CHECK |
@@ -232,3 +225,54 @@ su perfil administrador de forma idempotente.
 | `tenant_log_select` | SELECT | authenticated | PERMISSIVE | `private.es_miembro_de_organizacion(( SELECT usuario.organizacion_id    FROM usuario   WHERE (usuario.id = log_auditoria.usuario_id)))` | — |
 | `tenant_log_insert` | INSERT | authenticated | PERMISSIVE | — | `((usuario_id = auth.uid()) AND private.es_miembro_de_organizacion(( SELECT usuario.organizacion_id    FROM usuario   WHERE (usuario.id = auth.uid()))))` |
 
+
+
+## Functions
+
+crear_organizacion_inicial:
+
+declare
+  nueva_organizacion uuid;
+begin
+  if auth.uid() is null then
+    raise exception 'Se requiere una sesion activa';
+  end if;
+
+  insert into public.organizacion (nombre, plan_tipo)
+  values (nombre_organizacion, plan)
+  returning id into nueva_organizacion;
+
+  insert into public.usuario (id, nombre, rol, activo, organizacion_id)
+  values (auth.uid(), nombre_usuario, 'admin', true, nueva_organizacion);
+
+  return nueva_organizacion;
+end;
+
+handle_new_user:
+
+BEGIN
+    INSERT INTO public.usuario (id, nombre, rol)
+    VALUES (
+        new.id,
+        COALESCE(new.raw_user_meta_data->>'nombre', new.email),
+        COALESCE(new.raw_user_meta_data->>'rol', 'clinico')
+    );
+    RETURN NEW;
+END;
+
+invitar_a_organizacion:
+
+declare
+  mi_organizacion uuid;
+begin
+  select organizacion_id into mi_organizacion
+  from public.usuario
+  where id = auth.uid() and rol = 'admin' and activo = true;
+
+  if mi_organizacion is null then
+    raise exception 'Solo un admin de organización puede invitar';
+  end if;
+
+  insert into public.usuario (id, nombre, rol, activo, organizacion_id)
+  values (usuario_invitado, nombre_usuario, rol_asignado, true, mi_organizacion);
+end;
