@@ -46,6 +46,12 @@ La base de datos cuenta con un esquema relacional diseñado para preservar la pr
 - **`derivacion`**: Gestión de interconsultas a especialistas cuando se requiere derivación [3, 33].
 - **`log_auditoria`**: Bitácora centralizada que registra de forma inmutable todas las operaciones sensibles en el sistema para garantizar el cumplimiento de la Ley N.° 19.628 [3, 13, 33].
 
+### Multi-tenancy
+
+Cada **organización** representa un tenant. El plan individual crea una organización con un profesional; el plan clínica agrupa a varios profesionales en la misma organización. Los integrantes activos comparten pacientes, fichas, agenda, atenciones, derivaciones e imágenes según las políticas RLS.
+
+El plan clínica se justifica por capacidades compartidas de la organización, como administración centralizada, agenda conjunta, reportes agregados y trazabilidad de auditoría; no es solamente un conjunto de cuentas individuales.
+
 ### Políticas Row Level Security (RLS)
 Para garantizar la confidencialidad de la información de salud de los pacientes, se han implementado políticas estrictas de RLS en PostgreSQL [13]. Algunos ejemplos clave son:
 - **`ficha_clinica`**: Lectura permitida para personal autenticado; actualización de antecedentes exclusiva para clínicos activos [4, 34].
@@ -87,9 +93,11 @@ Para garantizar la confidencialidad de la información de salud de los pacientes
   ```env
   NEXT_PUBLIC_SUPABASE_URL=https://tu-proyecto.supabase.co
   NEXT_PUBLIC_SUPABASE_ANON_KEY=tu_clave_publica_de_supabase
+  NEXT_PUBLIC_SITE_URL=http://localhost:3000
   ```
 
   La clave `NEXT_PUBLIC_SUPABASE_ANON_KEY` es apta para el cliente. Nunca agregues una clave `service_role` al frontend ni la subas al repositorio.
+  Agrega `NEXT_PUBLIC_SITE_URL` en las URLs de redirección de **Authentication > URL Configuration** en Supabase.
 
 3. **Ejecutar con Docker (Recomendado):**
   El contenedor ejecuta Next.js y se conecta directamente al proyecto remoto de Supabase. No se levanta un PostgreSQL local.
@@ -123,6 +131,20 @@ Para garantizar la confidencialidad de la información de salud de los pacientes
   npm run lint
   npm run build
   ```
+
+### Rutas de autenticación
+
+- `/login`: inicio de sesión.
+- `/registro`: creación de cuenta y organización individual o clínica.
+- `/registro/confirmar`: confirmación de correo pendiente.
+- `/recuperar-password`: solicitud de recuperación.
+- `/actualizar-password`: cambio de contraseña desde el enlace recibido.
+- `/auth/confirm`: callback de Supabase Auth.
+
+Antes de probar el registro, aplica las migraciones SQL versionadas en
+[`supabase/migrations`](supabase/migrations). La función
+`crear_organizacion_inicial` crea el tenant y el perfil administrador después
+del registro en Supabase Auth.
 
 ---
 
