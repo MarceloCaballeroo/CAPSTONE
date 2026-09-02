@@ -1,40 +1,36 @@
-# [Nombre del Proyecto por Definir]
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-## Descripción
-[Explica brevemente qué hace la aplicación, a qué público va dirigido y qué problema específico resuelve].
+## Getting Started
 
-## Tecnologías Utilizadas
-- **Lenguaje/Framework:** [ej. Node.js, Express / Python, Django]
-- **Base de Datos:** [ej. PostgreSQL / MongoDB]
-- **Cloud/Infraestructura:** Docker, Docker Compose, [AWS/GCP si aplica]
+First, run the development server:
 
-## Instrucciones de Ejecución Local
-
-1. Clona este repositorio:
-   ```bash
-   git clone [https://github.com/tu-usuario/nombre-del-proyecto.git](https://github.com/tu-usuario/nombre-del-proyecto.git)
-   ```
-2. Configura las variables de entorno: Copia el archivo .env.example y renómbralo a .env.
-
-Modifica las credenciales según corresponda.
-
-Levanta los contenedores usando Docker Compose:
-
-```Bash
-docker-compose up --build
+```bash
+npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+# or
+bun dev
 ```
 
-Accede a la aplicación en http://localhost:PORT.
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-ntegrantes del Equipo
-[Marcelo Caballero]: [Rol, ej. Backend Developer / DevOps]
+You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
-[Emily Vera]: [Rol, ej. Frontend Developer / Scrum Master]
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
-[Martin Maldonado]: [Rol, ej. Database Administrator / QA]
+## Learn More
 
-Metodología de Trabajo
-Trabajamos utilizando [Scrum / Cascada / Kanban]. [Añade una breve descripción de cómo organizan los Sprints o fases y cómo manejan el tablero de tareas].
+To learn more about Next.js, take a look at the following resources:
 
-Arquitectura de la Solución
-[Inserta aquí una imagen de tu diagrama de arquitectura o describe detalladamente los componentes: Cliente -> API Gateway -> Servicios -> Base de Datos].
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+
+## Deploy on Vercel
+
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
