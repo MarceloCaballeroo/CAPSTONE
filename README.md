@@ -1,74 +1,76 @@
 # PodoCare — Sistema de Gestión Clínica para Consultas de Podología
 
-**PodoCare** es una plataforma web de gestión clínica diseñada específicamente para consultas de podología independiente en Chile [11, 13]. Su propósito fundamental es digitalizar la ficha clínica del paciente, automatizar el agendamiento de citas, realizar el seguimiento de atenciones utilizando estándares clínicos (como CIE-10 e IWGDF) y garantizar la trazabilidad y protección de datos sensibles en cumplimiento con la Ley N.° 19.628 de Protección de la Vida Privada [13, 14].
+**PodoCare** es una plataforma web de gestión clínica diseñada específicamente para consultas de podología independiente en Chile. Su propósito es digitalizar la ficha clínica del paciente, automatizar el agendamiento de citas, dar seguimiento a las atenciones usando estándares clínicos (CIE-10 e IWGDF) y garantizar la trazabilidad y protección de datos sensibles en cumplimiento con la Ley N.° 19.628 de Protección de la Vida Privada.
 
-Este proyecto se desarrolla en el marco de la asignatura **Capstone (Portafolio de Título)** de la carrera de **Ingeniería en Informática** en **Duoc UC, Sede Plaza Vespucio** [10, 40].
-
----
-
-## 📋 Contexto y Problemática
-
-En Chile, se estima que entre el **60% y el 70% de las consultas de podología independiente** —principalmente negocios unipersonales o de equipos de 1 a 2 profesionales— siguen gestionando sus fichas y registros en papel o plantillas de Excel convencionales [13]. Esta práctica informal genera múltiples problemas [13]:
-1. **Pérdida de trazabilidad clínica:** Dificultad para hacer seguimiento de tratamientos a largo plazo (por ejemplo, el control de pie de riesgo u onicocriptosis) [13].
-2. **Riesgo Operacional y de Gestión:** Ineficiencias en el agendamiento y coordinación de citas [13].
-3. **Vulnerabilidad Legal:** Los datos médicos se clasifican como datos sensibles. Al no contar con almacenamiento seguro ni controles de acceso adecuados, los profesionales quedan expuestos a sanciones de acuerdo con la **Ley N.° 19.628 de Protección de Datos Personales** [13].
-
-**PodoCare** resuelve este vacío al proporcionar un sistema robusto que no trata la seguridad como un añadido, sino como parte de la arquitectura base [13].
+Este proyecto se desarrolla en el marco de la asignatura **Capstone (Portafolio de Título)** de la carrera de **Ingeniería en Informática** en **Duoc UC, Sede Plaza Vespucio**.
 
 ---
 
-## 🛠️ Tecnologías y Arquitectura
+## Contexto y problemática
 
-La solución está construida con un stack moderno, enfocado en rendimiento, seguridad y portabilidad [13, 17]:
+En Chile, se estima que entre el **60% y el 70% de las consultas de podología independiente** —principalmente negocios unipersonales o equipos de 1 a 2 profesionales— siguen gestionando sus fichas y registros en papel o planillas Excel. Esta práctica informal genera tres problemas concretos:
 
-- **Frontend:** [Next.js](https://nextjs.org/) (App Router) con TypeScript, estilizado mediante Tailwind CSS [13, 21, 52].
-- **Backend & Backend-as-a-Service:** [Supabase](https://supabase.com/), aprovechando:
-  - **PostgreSQL:** Base de datos relacional para el modelado estructurado de datos clínicos [13].
-  - **Supabase Auth:** Autenticación segura y gestión de roles de usuario (Administrador y Clínico) [13, 17].
-  - **Supabase Storage:** Almacenamiento seguro de imágenes clínicas [13, 17].
-  - **Row Level Security (RLS):** Control de acceso granular a nivel de fila directamente en el motor de base de datos [13, 14].
-- **Contenedores:** Docker y Docker Compose para asegurar la reproducibilidad del entorno de desarrollo local [17, 21].
-- **Despliegue:** Configurado para desplegarse fácilmente en Vercel (Frontend) y en la nube de Supabase [13, 17].
+1. **Pérdida de trazabilidad clínica:** dificultad para hacer seguimiento de tratamientos a largo plazo, como el control de pie de riesgo o la onicocriptosis.
+2. **Riesgo operacional y de gestión:** ineficiencias en el agendamiento y la coordinación de citas.
+3. **Vulnerabilidad legal:** los datos de salud se clasifican como datos sensibles. Sin almacenamiento seguro ni controles de acceso adecuados, los profesionales quedan expuestos a sanciones bajo la Ley N.° 19.628.
+
+PodoCare resuelve este vacío con un sistema que no trata la seguridad como un añadido, sino como parte de la arquitectura base.
 
 ---
 
-## 🗃️ Modelo de Datos y Seguridad (RLS)
+## Tecnologías y arquitectura
 
-La base de datos cuenta con un esquema relacional diseñado para preservar la privacidad de los pacientes y auditar rigurosamente cada acción [13].
+- **Frontend:** [Next.js](https://nextjs.org/) (App Router) con TypeScript, estilizado con Tailwind CSS.
+- **Backend / BaaS:** [Supabase](https://supabase.com/), usando:
+  - **PostgreSQL** — modelado relacional de los datos clínicos.
+  - **Supabase Auth** — autenticación y gestión de roles (`admin`, `podologo`).
+  - **Supabase Storage** — almacenamiento seguro de imágenes clínicas.
+  - **Row Level Security (RLS)** — control de acceso granular a nivel de fila, aplicado directamente en el motor de base de datos.
+- **Contenedores:** Docker y Docker Compose, para reproducibilidad del entorno de desarrollo local.
+- **Despliegue:** Vercel (frontend) + Supabase Cloud (backend).
 
-### Tablas Principales
-- **`usuario`**: Registro de usuarios del sistema (clínicos y administradores) con control de estado activo/inactivo [1, 31].
-- **`paciente`**: Información personal y datos de contacto de los pacientes, incluyendo consentimiento informado explícito [1, 31].
-- **`ficha_clinica`**: Vínculo único por paciente que contiene antecedentes clínicos generales [2, 32].
-- **`atencion`**: Registro estructurado de cada consulta médica que incluye diagnóstico codificado por **CIE-10**, clasificación de nivel de riesgo según la escala internacional **IWGDF** (muy bajo, bajo, moderado, alto), necesidad de derivación y observaciones [2, 4, 32, 34].
-- **`cita`**: Gestión del agendamiento (estados: agendada, confirmada, en espera, atendida, cancelada, no asiste) [2, 4, 32, 34].
-- **`imagen_clinica`**: Registros fotográficos de las atenciones podológicas almacenados de forma segura con estimación de área en cm² [3, 33].
-- **`derivacion`**: Gestión de interconsultas a especialistas cuando se requiere derivación [3, 33].
-- **`log_auditoria`**: Bitácora centralizada que registra de forma inmutable todas las operaciones sensibles en el sistema para garantizar el cumplimiento de la Ley N.° 19.628 [3, 13, 33].
+---
+
+## Modelo de datos y seguridad (RLS)
+
+### Tablas principales
+
+| Tabla | Descripción |
+|---|---|
+| `usuario` | Profesionales y administradores del sistema, con estado activo/inactivo. |
+| `paciente` | Datos personales y de contacto del paciente, incluyendo consentimiento informado explícito. |
+| `ficha_clinica` | Vínculo único por paciente con sus antecedentes clínicos generales. |
+| `atencion` | Registro de cada consulta: diagnóstico CIE-10, nivel de riesgo IWGDF (muy bajo / bajo / moderado / alto), necesidad de derivación y observaciones. |
+| `cita` | Agendamiento (estados: agendada, confirmada, en espera, atendida, cancelada, no asiste). |
+| `imagen_clinica` | Registros fotográficos de las atenciones, con estimación de área en cm². |
+| `derivacion` | Interconsultas a especialistas cuando la atención lo requiere. |
+| `log_auditoria` | Bitácora inmutable de operaciones sensibles, para cumplimiento de la Ley N.° 19.628. |
+| `organizacion` | Tenant compartido por los profesionales de una misma cuenta o clínica. |
 
 ### Multi-tenancy
 
-Cada **organización** representa un tenant. El plan individual crea una organización con un profesional; el plan clínica agrupa a varios profesionales en la misma organización. Los integrantes activos comparten pacientes, fichas, agenda, atenciones, derivaciones e imágenes según las políticas RLS.
+Cada **organización** representa un tenant. El plan individual crea una organización con un solo profesional; el plan clínica agrupa a varios profesionales dentro de la misma organización, compartiendo pacientes, fichas, agenda, atenciones, derivaciones e imágenes según las políticas RLS.
 
-El plan clínica se justifica por capacidades compartidas de la organización, como administración centralizada, agenda conjunta, reportes agregados y trazabilidad de auditoría; no es solamente un conjunto de cuentas individuales.
+El plan clínica se justifica por capacidades propias de la organización —administración centralizada, agenda conjunta, reportes agregados y trazabilidad de auditoría compartida— y no es simplemente un conjunto de cuentas individuales agrupadas.
 
 ### Políticas Row Level Security (RLS)
-Para garantizar la confidencialidad de la información de salud de los pacientes, se han implementado políticas estrictas de RLS en PostgreSQL [13]. Algunos ejemplos clave son:
-- **`ficha_clinica`**: Lectura permitida para personal autenticado; actualización de antecedentes exclusiva para clínicos activos [4, 34].
-- **`atencion`**: Los clínicos activos pueden leer atenciones del centro y registrar/editar únicamente sus propias atenciones; la eliminación queda reservada exclusivamente para el rol Administrador [8, 38].
-- **`paciente`**: El personal clínico puede consultar, ingresar (requiere RUT válido) y actualizar datos de pacientes [9, 39].
-- **`log_auditoria`**: Inserción estricta mediante triggers automáticos de base de datos para registrar accesos o mutaciones en los registros [7, 17, 37].
+
+- **`paciente` / `ficha_clinica` / `atencion` / `cita` / `imagen_clinica` / `derivacion`**: acceso restringido a los miembros activos de la misma organización.
+- **`atencion`**: los profesionales activos pueden leer las atenciones de su organización y registrar/editar únicamente las propias; la eliminación queda reservada al rol `admin`.
+- **`paciente`**: el personal clínico puede consultar, ingresar (requiere RUT válido) y actualizar datos de pacientes de su organización.
+- **`log_auditoria`**: inserción estricta vía triggers automáticos; sin políticas de `UPDATE` ni `DELETE` — el registro es inmutable por diseño.
 
 ---
 
-## 🚀 Instalación y Configuración Local
+## Instalación y configuración local
 
-### Requisitos Previos
+### Requisitos previos
+
 - Node.js v20.9 o superior (se recomienda v22)
-- Docker Desktop con Docker Compose, si se ejecutará en un contenedor [17, 21]
-- Un proyecto de Supabase con sus tablas, enums y políticas RLS configurados según [`model.md`](model.md)
+- Docker Desktop con Docker Compose, si se ejecutará en contenedor
+- Un proyecto de Supabase con el esquema aplicado (ver [`model.md`](model.md) y las migraciones en [`supabase/migrations`](supabase/migrations))
 
-### Pasos para Configurar el Proyecto
+### Pasos
 
 1. **Clonar el repositorio:**
    ```bash
@@ -76,102 +78,94 @@ Para garantizar la confidencialidad de la información de salud de los pacientes
    cd CAPSTONE
    ```
 
-2. **Configurar las Variables de Entorno:**
-  Copia el archivo `.env.example` como `.env` en la raíz del proyecto.
+2. **Configurar las variables de entorno:**
 
-  En Bash:
-  ```bash
-  cp .env.example .env
-  ```
+   Copia `.env.example` como `.env` en la raíz del proyecto.
 
-  En PowerShell:
-  ```powershell
-  Copy-Item .env.example .env
-  ```
-
-  Edita `.env` y reemplaza los valores de ejemplo con los datos de tu proyecto:
-  ```env
-  NEXT_PUBLIC_SUPABASE_URL=https://tu-proyecto.supabase.co
-  NEXT_PUBLIC_SUPABASE_ANON_KEY=tu_clave_publica_de_supabase
-  NEXT_PUBLIC_SITE_URL=http://localhost:3000
-  ```
-
-  La clave `NEXT_PUBLIC_SUPABASE_ANON_KEY` es apta para el cliente. Nunca agregues una clave `service_role` al frontend ni la subas al repositorio.
-  Agrega `NEXT_PUBLIC_SITE_URL` en las URLs de redirección de **Authentication > URL Configuration** en Supabase.
-
-3. **Ejecutar con Docker (Recomendado):**
-  El contenedor ejecuta Next.js y se conecta directamente al proyecto remoto de Supabase. No se levanta un PostgreSQL local.
-
-  ```bash
-  docker compose --env-file .env up --build
-  ```
-
-  Para ejecutar en segundo plano:
-  ```bash
-  docker compose --env-file .env up --build -d
-  ```
-
-  Para detener el contenedor:
-  ```bash
-  docker compose down
-  ```
-
-  Abre [http://localhost:3000](http://localhost:3000) cuando el contenedor indique que está listo.
-
-4. **Ejecutar Localmente en Modo Desarrollo:**
-   Si prefieres ejecutar el servidor de desarrollo de Next.js directamente [22, 52]:
    ```bash
-  npm ci
+   # Bash
+   cp .env.example .env
+   ```
+   ```powershell
+   # PowerShell
+   Copy-Item .env.example .env
+   ```
+
+   Edita `.env` con los datos de tu proyecto:
+   ```env
+   NEXT_PUBLIC_SUPABASE_URL=https://tu-proyecto.supabase.co
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=tu_clave_publica_de_supabase
+   NEXT_PUBLIC_SITE_URL=http://localhost:3000
+   ```
+
+   La clave `NEXT_PUBLIC_SUPABASE_ANON_KEY` es apta para el cliente. **Nunca** agregues una clave `service_role` al frontend ni la subas al repositorio.
+
+   Agrega también `NEXT_PUBLIC_SITE_URL` a las URLs de redirección permitidas en **Authentication → URL Configuration** dentro del dashboard de Supabase.
+
+3. **Aplicar las migraciones de base de datos:**
+
+   Antes de probar el registro, aplica las migraciones SQL versionadas en [`supabase/migrations`](supabase/migrations). En particular, `20260902020000_auth_organization_functions.sql` crea:
+   - `crear_organizacion_inicial` — crea el tenant y el perfil administrador al registrarse.
+   - `invitar_a_organizacion` — permite que un administrador incorpore profesionales a su organización.
+   - El trigger `handle_new_user`, que evita crear perfiles sin tenant asociado.
+
+4. **Ejecutar con Docker (recomendado):**
+
+   El contenedor ejecuta Next.js y se conecta directamente al proyecto remoto de Supabase — no se levanta un PostgreSQL local.
+
+   ```bash
+   docker compose --env-file .env up --build       # primer plano
+   docker compose --env-file .env up --build -d    # segundo plano
+   docker compose down                              # detener
+   ```
+
+   Abre [http://localhost:3000](http://localhost:3000) cuando el contenedor esté listo.
+
+5. **Ejecutar en modo desarrollo (alternativa sin Docker):**
+
+   ```bash
+   npm ci
    npm run dev
    ```
-   Abre [http://localhost:3000](http://localhost:3000) en tu navegador para ver la aplicación [22, 52].
 
-5. **Comandos de verificación:**
-  ```bash
-  npm run lint
-  npm run build
-  ```
+   Abre [http://localhost:3000](http://localhost:3000).
+
+6. **Comandos de verificación:**
+
+   ```bash
+   npm run lint
+   npm run build
+   ```
 
 ### Rutas de autenticación
 
-- `/login`: inicio de sesión.
-- `/register`: creación de cuenta y organización individual o clínica.
-- `/register/confirm`: confirmación de correo pendiente.
-- `/recover-password`: solicitud de recuperación.
-- `/update-password`: cambio de contraseña desde el enlace recibido.
-- `/auth/confirm`: callback de Supabase Auth.
+| Ruta | Descripción |
+|---|---|
+| `/login` | Inicio de sesión. |
+| `/register` | Creación de cuenta y organización (individual o clínica). |
+| `/register/confirm` | Confirmación de correo pendiente. |
+| `/recover-password` | Solicitud de recuperación de contraseña. |
+| `/update-password` | Cambio de contraseña desde el enlace recibido por correo. |
+| `/auth/confirm` | Callback de Supabase Auth (verifica el token y completa la creación del tenant si corresponde). |
 
-Antes de probar el registro, aplica las migraciones SQL versionadas en
-[`supabase/migrations`](supabase/migrations). La función
-`crear_organizacion_inicial` crea el tenant y el perfil administrador después
-del registro en Supabase Auth.
-
-La migración `20260902020000_auth_organization_functions.sql` también configura
-el trigger `handle_new_user` para no crear perfiles sin tenant y agrega
-`invitar_a_organizacion` para que un administrador incorpore profesionales a su
-organización.
+> **Nota interna:** verificar que los nombres de ruta en el código (`src/app/`) coincidan exactamente con esta tabla antes de cada entrega — si el equipo tradujo las rutas del español al inglés (o viceversa) en algún momento, esta sección debe reflejar el estado real del repositorio.
 
 ---
 
-## 👥 Equipo de Trabajo (Squad Scrum)
+## Equipo de trabajo (Squad Scrum)
 
-El proyecto es desarrollado utilizando la metodología ágil **Scrum** con roles distribuidos de la siguiente manera [15, 45]:
+El proyecto se desarrolla con la metodología ágil **Scrum**, con roles distribuidos así:
 
-- **Emily Catalina Vera Gutierrez** — *Scrum Master / Product Owner* [25, 55]
-  - Responsable de la gestión del backlog, documentación de requerimientos y coordinación directa con el cliente real (podólogo independiente) [15, 25, 45, 55].
-- **Marcelo Ignacio Caballero Olave** — *Developer (Infraestructura y Despliegue)* [25, 55]
-  - Responsable de la integración de Supabase (Auth, Storage), despliegue en Vercel y configuración de contenedores Docker [15, 25, 45, 55].
-- **Martin Antonio Maldonado Astudillo** — *Developer (Frontend y QA)* [25, 55]
-  - Responsable del desarrollo del cliente web en Next.js, implementación de la UI/UX y control de calidad [15, 25, 45, 55].
-- **Nova** — *Developer (Seguridad y Datos)* [25, 55]
-  - Responsable del modelado físico de la base de datos PostgreSQL, diseño de triggers de auditoría y políticas de Row Level Security (RLS) [25, 55].
+| Integrante | Rol Scrum | Responsabilidades |
+|---|---|---|
+| **Marcelo Ignacio Caballero Olave** | Developer — Seguridad, Datos e Infraestructura | Modelado físico de la base de datos PostgreSQL, políticas RLS, triggers de auditoría, integración de Supabase (Auth, Storage) y despliegue en Vercel/Docker. |
+| **Martin Antonio Maldonado Astudillo** | Developer — Frontend y QA | Desarrollo del cliente web en Next.js, implementación de UI/UX y control de calidad. |
+| **Emily Catalina Vera Gutiérrez** | Scrum Master / Product Owner | Gestión del backlog, documentación de requerimientos y coordinación directa con el cliente real (podólogo independiente). |
 
 ---
 
-## 📅 Hitos del Proyecto (Fases Portafolio)
+## Hitos del proyecto (fases Portafolio)
 
-El proyecto está planificado para ajustarse a las fases del semestre académico [13, 18, 48]:
-
-1. **Fase 1: Definición y Diseño (Semanas 1-4):** Levantamiento de requerimientos con el cliente, modelado de la base de datos relacional y diseño de políticas RLS [17, 18, 47, 48].
-2. **Fase 2: Desarrollo e Implementación (Semanas 5-12):** Implementación iterativa en sprints de 2 semanas de los módulos de autenticación, agenda, ficha clínica, carga de imágenes y bitácora de auditoría [15, 17, 18, 45, 47, 48].
-3. **Fase 3: Validación, Cierre y Entrega (Semanas 13-18):** Despliegue del sistema, pruebas de usabilidad y funcionales con el usuario real, y elaboración del informe final de título [17, 18, 47, 48].
+1. **Fase 1 — Definición y diseño** *(semanas 1-4):* levantamiento de requerimientos con el cliente, modelado de la base de datos relacional y diseño de políticas RLS.
+2. **Fase 2 — Desarrollo e implementación** *(semanas 5-12):* implementación iterativa en sprints de 2 semanas de los módulos de autenticación, agenda, ficha clínica, carga de imágenes y bitácora de auditoría.
+3. **Fase 3 — Validación, cierre y entrega** *(semanas 13-18):* despliegue del sistema, pruebas de usabilidad y funcionales con el usuario real, y elaboración del informe final de título.
