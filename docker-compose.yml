@@ -1,34 +1,15 @@
-version: '3.8'
-
 services:
   api:
-    build: .
+    build:
+      context: .
+      dockerfile: dockerfile
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
     container_name: capstone_api
     ports:
       - "3000:3000"
     environment:
-      - NODE_ENV=development
-      - DB_HOST=db
-      - DB_USER=${DB_USER}
-      - DB_PASS=${DB_PASS}
-    depends_on:
-      - db
-    volumes:
-      - .:/app
-      - /app/node_modules
-
-  db:
-    # Ejemplo con PostgreSQL (cambiar si usan MongoDB u otra)
-    image: postgres:15-alpine
-    container_name: capstone_db
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASS}
-      POSTGRES_DB: capstone_db
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-
-volumes:
-  pgdata:
+      NODE_ENV: production
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}

@@ -1,36 +1,150 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# PodoCare — Sistema de Gestión Clínica para Consultas de Podología
 
-## Getting Started
+**PodoCare** es una plataforma web de gestión clínica diseñada específicamente para consultas de podología independiente en Chile [11, 13]. Su propósito fundamental es digitalizar la ficha clínica del paciente, automatizar el agendamiento de citas, realizar el seguimiento de atenciones utilizando estándares clínicos (como CIE-10 e IWGDF) y garantizar la trazabilidad y protección de datos sensibles en cumplimiento con la Ley N.° 19.628 de Protección de la Vida Privada [13, 14].
 
-First, run the development server:
+Este proyecto se desarrolla en el marco de la asignatura **Capstone (Portafolio de Título)** de la carrera de **Ingeniería en Informática** en **Duoc UC, Sede Plaza Vespucio** [10, 40].
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+---
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 📋 Contexto y Problemática
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+En Chile, se estima que entre el **60% y el 70% de las consultas de podología independiente** —principalmente negocios unipersonales o de equipos de 1 a 2 profesionales— siguen gestionando sus fichas y registros en papel o plantillas de Excel convencionales [13]. Esta práctica informal genera múltiples problemas [13]:
+1. **Pérdida de trazabilidad clínica:** Dificultad para hacer seguimiento de tratamientos a largo plazo (por ejemplo, el control de pie de riesgo u onicocriptosis) [13].
+2. **Riesgo Operacional y de Gestión:** Ineficiencias en el agendamiento y coordinación de citas [13].
+3. **Vulnerabilidad Legal:** Los datos médicos se clasifican como datos sensibles. Al no contar con almacenamiento seguro ni controles de acceso adecuados, los profesionales quedan expuestos a sanciones de acuerdo con la **Ley N.° 19.628 de Protección de Datos Personales** [13].
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+**PodoCare** resuelve este vacío al proporcionar un sistema robusto que no trata la seguridad como un añadido, sino como parte de la arquitectura base [13].
 
-## Learn More
+---
 
-To learn more about Next.js, take a look at the following resources:
+## 🛠️ Tecnologías y Arquitectura
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+La solución está construida con un stack moderno, enfocado en rendimiento, seguridad y portabilidad [13, 17]:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- **Frontend:** [Next.js](https://nextjs.org/) (App Router) con TypeScript, estilizado mediante Tailwind CSS [13, 21, 52].
+- **Backend & Backend-as-a-Service:** [Supabase](https://supabase.com/), aprovechando:
+  - **PostgreSQL:** Base de datos relacional para el modelado estructurado de datos clínicos [13].
+  - **Supabase Auth:** Autenticación segura y gestión de roles de usuario (Administrador y Clínico) [13, 17].
+  - **Supabase Storage:** Almacenamiento seguro de imágenes clínicas [13, 17].
+  - **Row Level Security (RLS):** Control de acceso granular a nivel de fila directamente en el motor de base de datos [13, 14].
+- **Contenedores:** Docker y Docker Compose para asegurar la reproducibilidad del entorno de desarrollo local [17, 21].
+- **Despliegue:** Configurado para desplegarse fácilmente en Vercel (Frontend) y en la nube de Supabase [13, 17].
 
-## Deploy on Vercel
+---
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 🗃️ Modelo de Datos y Seguridad (RLS)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+La base de datos cuenta con un esquema relacional diseñado para preservar la privacidad de los pacientes y auditar rigurosamente cada acción [13].
+
+### Tablas Principales
+- **`usuario`**: Registro de usuarios del sistema (clínicos y administradores) con control de estado activo/inactivo [1, 31].
+- **`paciente`**: Información personal y datos de contacto de los pacientes, incluyendo consentimiento informado explícito [1, 31].
+- **`ficha_clinica`**: Vínculo único por paciente que contiene antecedentes clínicos generales [2, 32].
+- **`atencion`**: Registro estructurado de cada consulta médica que incluye diagnóstico codificado por **CIE-10**, clasificación de nivel de riesgo según la escala internacional **IWGDF** (muy bajo, bajo, moderado, alto), necesidad de derivación y observaciones [2, 4, 32, 34].
+- **`cita`**: Gestión del agendamiento (estados: agendada, confirmada, en espera, atendida, cancelada, no asiste) [2, 4, 32, 34].
+- **`imagen_clinica`**: Registros fotográficos de las atenciones podológicas almacenados de forma segura con estimación de área en cm² [3, 33].
+- **`derivacion`**: Gestión de interconsultas a especialistas cuando se requiere derivación [3, 33].
+- **`log_auditoria`**: Bitácora centralizada que registra de forma inmutable todas las operaciones sensibles en el sistema para garantizar el cumplimiento de la Ley N.° 19.628 [3, 13, 33].
+
+### Políticas Row Level Security (RLS)
+Para garantizar la confidencialidad de la información de salud de los pacientes, se han implementado políticas estrictas de RLS en PostgreSQL [13]. Algunos ejemplos clave son:
+- **`ficha_clinica`**: Lectura permitida para personal autenticado; actualización de antecedentes exclusiva para clínicos activos [4, 34].
+- **`atencion`**: Los clínicos activos pueden leer atenciones del centro y registrar/editar únicamente sus propias atenciones; la eliminación queda reservada exclusivamente para el rol Administrador [8, 38].
+- **`paciente`**: El personal clínico puede consultar, ingresar (requiere RUT válido) y actualizar datos de pacientes [9, 39].
+- **`log_auditoria`**: Inserción estricta mediante triggers automáticos de base de datos para registrar accesos o mutaciones en los registros [7, 17, 37].
+
+---
+
+## 🚀 Instalación y Configuración Local
+
+### Requisitos Previos
+- Node.js v20.9 o superior (se recomienda v22)
+- Docker Desktop con Docker Compose, si se ejecutará en un contenedor [17, 21]
+- Un proyecto de Supabase con sus tablas, enums y políticas RLS configurados según [`model.md`](model.md)
+
+### Pasos para Configurar el Proyecto
+
+1. **Clonar el repositorio:**
+   ```bash
+   git clone https://github.com/MarceloCaballeroo/CAPSTONE.git
+   cd CAPSTONE
+   ```
+
+2. **Configurar las Variables de Entorno:**
+  Copia el archivo `.env.example` como `.env` en la raíz del proyecto.
+
+  En Bash:
+  ```bash
+  cp .env.example .env
+  ```
+
+  En PowerShell:
+  ```powershell
+  Copy-Item .env.example .env
+  ```
+
+  Edita `.env` y reemplaza los valores de ejemplo con los datos de tu proyecto:
+  ```env
+  NEXT_PUBLIC_SUPABASE_URL=https://tu-proyecto.supabase.co
+  NEXT_PUBLIC_SUPABASE_ANON_KEY=tu_clave_publica_de_supabase
+  ```
+
+  La clave `NEXT_PUBLIC_SUPABASE_ANON_KEY` es apta para el cliente. Nunca agregues una clave `service_role` al frontend ni la subas al repositorio.
+
+3. **Ejecutar con Docker (Recomendado):**
+  El contenedor ejecuta Next.js y se conecta directamente al proyecto remoto de Supabase. No se levanta un PostgreSQL local.
+
+  ```bash
+  docker compose --env-file .env up --build
+  ```
+
+  Para ejecutar en segundo plano:
+  ```bash
+  docker compose --env-file .env up --build -d
+  ```
+
+  Para detener el contenedor:
+  ```bash
+  docker compose down
+  ```
+
+  Abre [http://localhost:3000](http://localhost:3000) cuando el contenedor indique que está listo.
+
+4. **Ejecutar Localmente en Modo Desarrollo:**
+   Si prefieres ejecutar el servidor de desarrollo de Next.js directamente [22, 52]:
+   ```bash
+  npm ci
+   npm run dev
+   ```
+   Abre [http://localhost:3000](http://localhost:3000) en tu navegador para ver la aplicación [22, 52].
+
+5. **Comandos de verificación:**
+  ```bash
+  npm run lint
+  npm run build
+  ```
+
+---
+
+## 👥 Equipo de Trabajo (Squad Scrum)
+
+El proyecto es desarrollado utilizando la metodología ágil **Scrum** con roles distribuidos de la siguiente manera [15, 45]:
+
+- **Emily Catalina Vera Gutierrez** — *Scrum Master / Product Owner* [25, 55]
+  - Responsable de la gestión del backlog, documentación de requerimientos y coordinación directa con el cliente real (podólogo independiente) [15, 25, 45, 55].
+- **Marcelo Ignacio Caballero Olave** — *Developer (Infraestructura y Despliegue)* [25, 55]
+  - Responsable de la integración de Supabase (Auth, Storage), despliegue en Vercel y configuración de contenedores Docker [15, 25, 45, 55].
+- **Martin Antonio Maldonado Astudillo** — *Developer (Frontend y QA)* [25, 55]
+  - Responsable del desarrollo del cliente web en Next.js, implementación de la UI/UX y control de calidad [15, 25, 45, 55].
+- **Nova** — *Developer (Seguridad y Datos)* [25, 55]
+  - Responsable del modelado físico de la base de datos PostgreSQL, diseño de triggers de auditoría y políticas de Row Level Security (RLS) [25, 55].
+
+---
+
+## 📅 Hitos del Proyecto (Fases Portafolio)
+
+El proyecto está planificado para ajustarse a las fases del semestre académico [13, 18, 48]:
+
+1. **Fase 1: Definición y Diseño (Semanas 1-4):** Levantamiento de requerimientos con el cliente, modelado de la base de datos relacional y diseño de políticas RLS [17, 18, 47, 48].
+2. **Fase 2: Desarrollo e Implementación (Semanas 5-12):** Implementación iterativa en sprints de 2 semanas de los módulos de autenticación, agenda, ficha clínica, carga de imágenes y bitácora de auditoría [15, 17, 18, 45, 47, 48].
+3. **Fase 3: Validación, Cierre y Entrega (Semanas 13-18):** Despliegue del sistema, pruebas de usabilidad y funcionales con el usuario real, y elaboración del informe final de título [17, 18, 47, 48].
