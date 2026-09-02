@@ -25,11 +25,26 @@ export async function middleware(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser();
 
-  // Redirigir al login si no hay sesión activa y no está en rutas públicas
-  const isAuthRoute = request.nextUrl.pathname.startsWith('/login');
-  if (!user && !isAuthRoute && request.nextUrl.pathname !== '/') {
+  const publicRoutes = [
+    '/',
+    '/login',
+    '/registro',
+    '/registro/confirmar',
+    '/recuperar-password',
+    '/actualizar-password',
+    '/auth/confirm',
+  ];
+  const isPublicRoute = publicRoutes.includes(request.nextUrl.pathname);
+
+  if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
+    return NextResponse.redirect(url);
+  }
+
+  if (user && ['/login', '/registro'].includes(request.nextUrl.pathname)) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/dashboard';
     return NextResponse.redirect(url);
   }
 
