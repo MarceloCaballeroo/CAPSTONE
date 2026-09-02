@@ -135,16 +135,21 @@ Para garantizar la confidencialidad de la información de salud de los pacientes
 ### Rutas de autenticación
 
 - `/login`: inicio de sesión.
-- `/registro`: creación de cuenta y organización individual o clínica.
-- `/registro/confirmar`: confirmación de correo pendiente.
-- `/recuperar-password`: solicitud de recuperación.
-- `/actualizar-password`: cambio de contraseña desde el enlace recibido.
+- `/register`: creación de cuenta y organización individual o clínica.
+- `/register/confirm`: confirmación de correo pendiente.
+- `/recover-password`: solicitud de recuperación.
+- `/update-password`: cambio de contraseña desde el enlace recibido.
 - `/auth/confirm`: callback de Supabase Auth.
 
 Antes de probar el registro, aplica las migraciones SQL versionadas en
 [`supabase/migrations`](supabase/migrations). La función
 `crear_organizacion_inicial` crea el tenant y el perfil administrador después
 del registro en Supabase Auth.
+
+La migración `20260902020000_auth_organization_functions.sql` también configura
+el trigger `handle_new_user` para no crear perfiles sin tenant y agrega
+`invitar_a_organizacion` para que un administrador incorpore profesionales a su
+organización.
 
 ---
 

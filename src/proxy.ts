@@ -1,7 +1,7 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -24,14 +24,13 @@ export async function middleware(request: NextRequest) {
   );
 
   const { data: { user } } = await supabase.auth.getUser();
-
   const publicRoutes = [
     '/',
     '/login',
-    '/registro',
-    '/registro/confirmar',
-    '/recuperar-password',
-    '/actualizar-password',
+    '/register',
+    '/register/confirm',
+    '/recover-password',
+    '/update-password',
     '/auth/confirm',
   ];
   const isPublicRoute = publicRoutes.includes(request.nextUrl.pathname);
@@ -42,7 +41,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (user && ['/login', '/registro'].includes(request.nextUrl.pathname)) {
+  if (user && ['/login', '/register'].includes(request.nextUrl.pathname)) {
     const url = request.nextUrl.clone();
     url.pathname = '/dashboard';
     return NextResponse.redirect(url);

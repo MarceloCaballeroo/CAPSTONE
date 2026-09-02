@@ -54,7 +54,7 @@ export async function registroAction(_prev: FormState, formData: FormData): Prom
     redirect("/dashboard");
   }
 
-  redirect("/registro/confirmar");
+  redirect("/register/confirm");
 }
 
 export async function recuperarPasswordAction(_prev: FormState, formData: FormData): Promise<FormState> {
@@ -64,7 +64,7 @@ export async function recuperarPasswordAction(_prev: FormState, formData: FormDa
   const supabase = await createClient();
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
   await supabase.auth.resetPasswordForEmail(parsed.data.email, {
-    redirectTo: `${siteUrl}/auth/confirm?next=/actualizar-password`,
+    redirectTo: `${siteUrl}/auth/confirm?next=/update-password`,
   });
   return { success: true };
 }
