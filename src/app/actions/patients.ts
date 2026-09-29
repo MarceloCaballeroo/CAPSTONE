@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { formatearRut, pacienteSchema } from "@/lib/validations/patients";
+import { formatearRut, pacienteSchema, type PacienteFormData } from "@/lib/validations/patients";
 import type { FormState } from "@/lib/types/auth";
 
 function obtenerDatos(formData: FormData) {
@@ -38,6 +38,26 @@ function traducirErrorPaciente(message: string): string {
   return "No pudimos guardar los datos del paciente. Revisa la información e inténtalo nuevamente.";
 }
 
+function mapearDatosPaciente(data: PacienteFormData) {
+  return {
+    nombre: data.nombre,
+    apellido_paterno: data.apellidoPaterno,
+    apellido_materno: data.apellidoMaterno || null,
+    rut: formatearRut(data.rut),
+    fecha_nacimiento: data.fechaNacimiento || null,
+    sexo_biologico: data.sexoBiologico || null,
+    telefono: data.telefono || null,
+    email: data.email || null,
+    direccion: data.direccion || null,
+    comuna: data.comuna || null,
+    prevision: data.prevision || null,
+    centro_salud_origen: data.centroSaludOrigen || null,
+    contacto_emergencia_nombre: data.contactoEmergenciaNombre || null,
+    contacto_emergencia_telefono: data.contactoEmergenciaTelefono || null,
+    contacto_emergencia_parentesco: data.contactoEmergenciaParentesco || null,
+  };
+}
+
 export async function crearPacienteAction(_prev: FormState, formData: FormData): Promise<FormState> {
   const parsed = pacienteSchema.safeParse(obtenerDatos(formData));
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Revisa los datos del paciente" };
@@ -50,21 +70,7 @@ export async function crearPacienteAction(_prev: FormState, formData: FormData):
   if (!organizacionId) return { error: "No encontramos la organización de tu cuenta." };
 
   const { data: paciente, error } = await supabase.from("paciente").insert({
-    nombre: parsed.data.nombre,
-    apellido_paterno: parsed.data.apellidoPaterno,
-    apellido_materno: parsed.data.apellidoMaterno || null,
-    rut: formatearRut(parsed.data.rut),
-    fecha_nacimiento: parsed.data.fechaNacimiento || null,
-    sexo_biologico: parsed.data.sexoBiologico || null,
-    telefono: parsed.data.telefono || null,
-    email: parsed.data.email || null,
-    direccion: parsed.data.direccion || null,
-    comuna: parsed.data.comuna || null,
-    prevision: parsed.data.prevision || null,
-    centro_salud_origen: parsed.data.centroSaludOrigen || null,
-    contacto_emergencia_nombre: parsed.data.contactoEmergenciaNombre || null,
-    contacto_emergencia_telefono: parsed.data.contactoEmergenciaTelefono || null,
-    contacto_emergencia_parentesco: parsed.data.contactoEmergenciaParentesco || null,
+    ...mapearDatosPaciente(parsed.data),
     consentimiento: true,
     fecha_consentimiento: new Date().toISOString(),
     organizacion_id: organizacionId,
@@ -84,21 +90,7 @@ export async function actualizarPacienteAction(_prev: FormState, formData: FormD
 
   const supabase = await createClient();
   const { error } = await supabase.from("paciente").update({
-    nombre: parsed.data.nombre,
-    apellido_paterno: parsed.data.apellidoPaterno,
-    apellido_materno: parsed.data.apellidoMaterno || null,
-    rut: formatearRut(parsed.data.rut),
-    fecha_nacimiento: parsed.data.fechaNacimiento || null,
-    sexo_biologico: parsed.data.sexoBiologico || null,
-    telefono: parsed.data.telefono || null,
-    email: parsed.data.email || null,
-    direccion: parsed.data.direccion || null,
-    comuna: parsed.data.comuna || null,
-    prevision: parsed.data.prevision || null,
-    centro_salud_origen: parsed.data.centroSaludOrigen || null,
-    contacto_emergencia_nombre: parsed.data.contactoEmergenciaNombre || null,
-    contacto_emergencia_telefono: parsed.data.contactoEmergenciaTelefono || null,
-    contacto_emergencia_parentesco: parsed.data.contactoEmergenciaParentesco || null,
+    ...mapearDatosPaciente(parsed.data),
   }).eq("id", pacienteId);
 
   if (error) return { error: traducirErrorPaciente(error.message) };
