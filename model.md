@@ -22,7 +22,7 @@
 | `nombre` | `text` |  |
 | `apellido_paterno` | `text` |  |
 | `apellido_materno` | `text` |  Nullable |
-| `rut` | `text` |  Unique |
+| `rut` | `text` |  Unique with `organizacion_id` (`paciente_org_rut_key`) |
 | `fecha_nacimiento` | `date` |  |
 | `sexo_biologico` | `sexo_biologico` |  |
 | `telefono` | `text` |  Nullable |

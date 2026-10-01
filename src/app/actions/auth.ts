@@ -32,10 +32,14 @@ export async function registroAction(_prev: FormState, formData: FormData): Prom
   const { nombre, email, password, plan, nombreOrganizacion } = parsed.data;
   const nombreOrg = plan === "clinica" ? nombreOrganizacion! : `${nombre} - Podología`;
   const supabase = await createClient();
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://podocare-six.vercel.app";
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: { data: { nombre, plan, nombreOrganizacion: nombreOrg } },
+    options: {
+      emailRedirectTo: `${siteUrl}/auth/confirm?next=/dashboard`,
+      data: { nombre, plan, nombreOrganizacion: nombreOrg },
+    },
   });
 
   if (error) {
@@ -62,7 +66,7 @@ export async function recuperarPasswordAction(_prev: FormState, formData: FormDa
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
 
   const supabase = await createClient();
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://podocare-six.vercel.app";
   await supabase.auth.resetPasswordForEmail(parsed.data.email, {
     redirectTo: `${siteUrl}/auth/confirm?next=/update-password`,
   });
