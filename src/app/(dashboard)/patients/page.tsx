@@ -3,7 +3,6 @@ import { Alert } from "@/components/common/Alert";
 import { Button } from "@/components/common/Button";
 import { Card } from "@/components/common/Card";
 import { createClient } from "@/lib/supabase/server";
-import { DashboardLayout } from "@/layouts/DashboardLayout";
 import { formatearRut } from "@/lib/validations/patients";
 
 const pacientesPorPagina = 10;
@@ -51,7 +50,7 @@ export default async function PacientesPage({ searchParams }: { searchParams: Pr
   const totalPaginas = Math.max(Math.ceil((count ?? 0) / pacientesPorPagina), 1);
 
   return (
-    <DashboardLayout>
+    <>
       <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-sm font-medium text-teal-700">Gestión clínica</p>
@@ -105,6 +104,6 @@ export default async function PacientesPage({ searchParams }: { searchParams: Pr
           </div>
         </nav>
       )}
-    </DashboardLayout>
+    </>
   );
 }

@@ -4,7 +4,6 @@ import { Alert } from "@/components/common/Alert";
 import { Button } from "@/components/common/Button";
 import { Card } from "@/components/common/Card";
 import { createClient } from "@/lib/supabase/server";
-import { DashboardLayout } from "@/layouts/DashboardLayout";
 
 export default async function PacientePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -13,7 +12,7 @@ export default async function PacientePage({ params }: { params: Promise<{ id: s
   if (pacienteError && pacienteError.code === "PGRST116") notFound();
 
   if (pacienteError || !paciente) {
-    return <DashboardLayout><Alert>No pudimos cargar la ficha del paciente.</Alert></DashboardLayout>;
+    return <Alert>No pudimos cargar la ficha del paciente.</Alert>;
   }
 
   const { data: ficha } = await supabase.from("ficha_clinica").select("id, antecedentes, updated_at").eq("paciente_id", id).maybeSingle();
@@ -23,7 +22,7 @@ export default async function PacientePage({ params }: { params: Promise<{ id: s
   const { data: derivaciones } = atencionIds.length ? await supabase.from("derivacion").select("id, motivo, especialidad_destino, estado, created_at, updated_at").in("atencion_id", atencionIds).order("created_at", { ascending: false }) : { data: [] };
 
   return (
-    <DashboardLayout>
+    <>
       <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div>
           <Link className="text-sm font-medium text-teal-700 hover:underline" href="/patients">← Volver a pacientes</Link>
@@ -61,6 +60,6 @@ export default async function PacientePage({ params }: { params: Promise<{ id: s
           {imagenes?.length ? <p className="mt-5 text-sm text-slate-600">{imagenes.length} imagen(es) asociada(s) a sus atenciones.</p> : <p className="mt-5 text-sm text-slate-500">No hay imágenes clínicas asociadas.</p>}
         </Card>
       </div>
-    </DashboardLayout>
+    </>
   );
 }
