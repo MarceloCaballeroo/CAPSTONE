@@ -6,7 +6,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { guardarHallazgoClinicoAction } from "@/app/actions/hallazgos";
 import type { AtencionMarcable, HallazgoClinico, LadoPie } from "@/lib/types/hallazgos";
-import { MODELO_PIE_VERSION } from "@/lib/types/hallazgos";
+import { hallazgosVigentes, MODELO_PIE_VERSION } from "@/lib/types/hallazgos";
 
 type VistaPies = "ambos" | "izquierdo" | "derecho";
 type PuntoClinico = { seleccionId: string; lado: LadoPie; posicion: [number, number, number]; normal: [number, number, number] };
@@ -71,7 +71,7 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
   const modelosRef = useRef<ParejaModelos | null>(null);
   const marcadorPendienteRef = useRef<THREE.Group | null>(null);
   const marcadoresRef = useRef(new Map<string, THREE.Group>());
-  const hallazgosRef = useRef(hallazgosIniciales);
+  const hallazgosRef = useRef(hallazgosVigentes(hallazgosIniciales));
   const persistenciaRef = useRef(persistenciaDisponible);
   const vistaActualRef = useRef<VistaPies>("ambos");
   const encuadrarRef = useRef<(vista: VistaPies) => void>(() => {});
@@ -83,11 +83,29 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
   const [afeccion, setAfeccion] = useState("");
   const [dolor, setDolor] = useState(0);
   const [estadoGuardar, formAction, guardando] = useActionState(guardarHallazgoClinicoAction, {});
-  const formularioVisible = Boolean(puntoSeleccionado && puntoSeleccionado.seleccionId !== estadoGuardar.seleccionId);
-  const hallazgos = estadoGuardar.hallazgo && !hallazgosIniciales.some(({ id }) => id === estadoGuardar.hallazgo?.id)
-    ? [...hallazgosIniciales, estadoGuardar.hallazgo].sort((a, b) => a.created_at.localeCompare(b.created_at))
+  const [hallazgoEnEdicion, setHallazgoEnEdicion] = useState<HallazgoClinico | null>(null);
+  const hallazgoEnEdicionRef = useRef<HallazgoClinico | null>(null);
+  const correccionGuardada = Boolean(hallazgoEnEdicion && estadoGuardar.hallazgo && estadoGuardar.seleccionId === puntoSeleccionado?.seleccionId);
+  const correccionActiva = Boolean(hallazgoEnEdicion && !correccionGuardada);
+  const respuestaDelPuntoActual = estadoGuardar.seleccionId === puntoSeleccionado?.seleccionId;
+  const formularioVisible = Boolean(puntoSeleccionado && (
+    (respuestaDelPuntoActual && estadoGuardar.error)
+    || (!respuestaDelPuntoActual && (!correccionActiva || puntoSeleccionado.seleccionId !== hallazgoEnEdicion?.id))
+  ));
+  const hallazgos = estadoGuardar.hallazgo
+    ? [...hallazgosIniciales.filter((hallazgo) => hallazgo.id !== estadoGuardar.hallazgo?.id), estadoGuardar.hallazgo].sort((a, b) => a.created_at.localeCompare(b.created_at))
     : hallazgosIniciales;
-  const atencionesSinHallazgos = atenciones.filter((atencion) => !hallazgos.some((hallazgo) => hallazgo.atencion_id === atencion.id));
+  const hallazgosActivos = hallazgosVigentes(hallazgos);
+  const idsReemplazados = new Set(hallazgos.map((hallazgo) => hallazgo.corrige_hallazgo_id).filter((id): id is string => id !== null));
+  const atencionesSinHallazgos = atenciones.filter((atencion) => !hallazgosActivos.some((hallazgo) => hallazgo.atencion_id === atencion.id));
+
+  useEffect(() => {
+    hallazgosRef.current = hallazgosActivos;
+  }, [hallazgosActivos]);
+
+  useEffect(() => {
+    hallazgoEnEdicionRef.current = correccionGuardada ? null : hallazgoEnEdicion;
+  }, [hallazgoEnEdicion, correccionGuardada]);
 
   useEffect(() => {
     const contenedor = contenedorRef.current;
@@ -171,7 +189,7 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
 
     const seleccionarPunto = (evento: MouseEvent) => {
       const modelos = modelosRef.current;
-      if (!modelos || !persistenciaRef.current || !atencionesRef.current.length) return;
+      if (!modelos) return;
       const punteroInicial = punteroInicialRef.current;
       punteroInicialRef.current = null;
       if (punteroInicial && Math.hypot(evento.clientX - punteroInicial.x, evento.clientY - punteroInicial.y) > 6) return;
@@ -210,14 +228,33 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
         local.x *= -1;
         normalLocal.x *= -1;
       }
-      setAfeccion("");
-      setDolor(0);
+
+      if (hallazgoEnEdicionRef.current) {
+        const hallazgoOrigen = hallazgoEnEdicionRef.current;
+        setAfeccion(hallazgoOrigen.afeccion);
+        setDolor(hallazgoOrigen.intensidad_dolor);
+        setPuntoSeleccionado({
+          seleccionId: crypto.randomUUID(),
+          lado,
+          posicion: [local.x, local.y, local.z],
+          normal: [normalLocal.x, normalLocal.y, normalLocal.z],
+        });
+        return;
+      }
+
       setPuntoSeleccionado({
         seleccionId: crypto.randomUUID(),
         lado,
         posicion: [local.x, local.y, local.z],
         normal: [normalLocal.x, normalLocal.y, normalLocal.z],
       });
+
+      if (!hallazgoEnEdicionRef.current) {
+        if (!persistenciaRef.current || !atencionesRef.current.length) return;
+        setAfeccion("");
+        setDolor(0);
+        return;
+      }
     };
 
     const iniciarPuntero = (evento: PointerEvent) => {
@@ -280,7 +317,7 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
         modelosRef.current.derecho.updateMatrixWorld(true);
 
         for (const hallazgo of hallazgosRef.current) {
-          if (hallazgo.modelo_version !== MODELO_PIE_VERSION) continue;
+          if (hallazgo.modelo_version !== MODELO_PIE_VERSION || marcadoresRef.current.has(hallazgo.id)) continue;
           const raizHallazgo = hallazgo.lado_pie === "izquierdo" ? modelosRef.current.izquierdo : modelosRef.current.derecho;
           const puntoLocal = new THREE.Vector3(hallazgo.coordenada_x, hallazgo.coordenada_y, hallazgo.coordenada_z);
           const normalHallazgo = new THREE.Vector3(hallazgo.normal_x, hallazgo.normal_y, hallazgo.normal_z);
@@ -338,6 +375,48 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
   }, []);
 
   useEffect(() => {
+    const modeli = modelosRef.current;
+    if (!modeli) return;
+
+    const escenas = modeli.izquierdo.parent;
+    if (!escenas) return;
+    for (const [id, marcador] of marcadoresRef.current) {
+      if (!hallazgosRef.current.some((hallazgo) => hallazgo.id === id)) {
+        marcador.removeFromParent();
+        liberarModelo(marcador);
+        marcadoresRef.current.delete(id);
+      }
+    }
+
+    for (const hallazgo of hallazgosRef.current) {
+      if (hallazgo.modelo_version !== MODELO_PIE_VERSION) continue;
+      const raizHallazgo = hallazgo.lado_pie === "izquierdo" ? modeli.izquierdo : modeli.derecho;
+      const puntoLocal = new THREE.Vector3(hallazgo.coordenada_x, hallazgo.coordenada_y, hallazgo.coordenada_z);
+      const normalHallazgo = new THREE.Vector3(hallazgo.normal_x, hallazgo.normal_y, hallazgo.normal_z);
+      if (hallazgo.lado_pie === "izquierdo") {
+        puntoLocal.x *= -1;
+        normalHallazgo.x *= -1;
+      }
+      const normalGlobal = normalHallazgo.transformDirection(raizHallazgo.matrixWorld);
+      const marcadorExistente = marcadoresRef.current.get(hallazgo.id);
+      if (marcadorExistente) {
+        marcadorExistente.position.copy(raizHallazgo.localToWorld(puntoLocal)).addScaledVector(normalGlobal, 0.018);
+        marcadorExistente.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normalGlobal);
+        marcadorExistente.traverse((objeto) => {
+          if (objeto instanceof THREE.Mesh) objeto.material.color.setHex(colorDolor(hallazgo.intensidad_dolor));
+        });
+        continue;
+      }
+
+      const marcador = crearMarcador(colorDolor(hallazgo.intensidad_dolor));
+      marcador.position.copy(raizHallazgo.localToWorld(puntoLocal)).addScaledVector(normalGlobal, 0.018);
+      marcador.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normalGlobal);
+      escenas.add(marcador);
+      marcadoresRef.current.set(hallazgo.id, marcador);
+    }
+  }, [hallazgos]);
+
+  useEffect(() => {
     const hallazgo = estadoGuardar.hallazgo;
     if (!hallazgo || estadoGuardar.seleccionId !== puntoSeleccionado?.seleccionId) return;
 
@@ -364,6 +443,22 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
       marcadorPendienteRef.current = null;
     }
     setPuntoSeleccionado(null);
+    setHallazgoEnEdicion(null);
+  };
+
+  const cancelarEdicion = () => {
+    setHallazgoEnEdicion(null);
+    setPuntoSeleccionado(null);
+  };
+
+  const iniciarEdicion = (hallazgo: HallazgoClinico) => {
+    setHallazgoEnEdicion(hallazgo);
+    setPuntoSeleccionado({
+      seleccionId: hallazgo.id,
+      lado: hallazgo.lado_pie,
+      posicion: [hallazgo.coordenada_x, hallazgo.coordenada_y, hallazgo.coordenada_z],
+      normal: [hallazgo.normal_x, hallazgo.normal_y, hallazgo.normal_z],
+    });
   };
 
   return (
@@ -398,10 +493,22 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
           atenciones.length ? <p className="text-xs text-slate-500">Haz clic en el pie para marcar una afección y asociarla a una atención. Los puntos quedan en su historial clínico.</p>
             : <p className="text-sm text-slate-600">Registra una atención clínica antes de ubicar hallazgos en el mapa.</p>
         ) : <p role="alert" className="text-sm text-amber-800">No se pudo cargar el historial de marcas. Verifica que la migración del visor esté aplicada.</p>}
+        {correccionActiva && hallazgoEnEdicion && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-4 text-sm text-slate-700">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-semibold text-amber-900">Corrección de marca</p>
+                <p className="mt-1 text-sm text-slate-600">La marca original se conserva. Haz clic en el pie para elegir la nueva ubicación de la corrección.</p>
+              </div>
+              <button type="button" onClick={cancelarEdicion} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Cancelar</button>
+            </div>
+          </div>
+        )}
         {formularioVisible && puntoSeleccionado && (
           <form className="grid gap-4 rounded-lg border border-teal-200 bg-teal-50/60 p-4 lg:grid-cols-[minmax(180px,0.8fr)_minmax(0,1fr)_minmax(180px,0.7fr)_auto] lg:items-end" action={formAction}>
             <input type="hidden" name="seleccionId" value={puntoSeleccionado.seleccionId} />
             <input type="hidden" name="pacienteId" value={pacienteId} />
+            <input type="hidden" name="corrigeHallazgoId" value={correccionActiva ? hallazgoEnEdicion?.id ?? "" : ""} />
             <input type="hidden" name="ladoPie" value={puntoSeleccionado.lado} />
             <input type="hidden" name="x" value={puntoSeleccionado.posicion[0]} />
             <input type="hidden" name="y" value={puntoSeleccionado.posicion[1]} />
@@ -409,14 +516,26 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
             <input type="hidden" name="normalX" value={puntoSeleccionado.normal[0]} />
             <input type="hidden" name="normalY" value={puntoSeleccionado.normal[1]} />
             <input type="hidden" name="normalZ" value={puntoSeleccionado.normal[2]} />
-            <label className="grid gap-1.5 text-sm font-medium text-slate-700" htmlFor="atencionId">
-              Atención · pie {puntoSeleccionado.lado}
-              <select id="atencionId" name="atencionId" required defaultValue={atenciones[0]?.id ?? ""} className="h-10 min-w-0 rounded-md border border-slate-300 bg-white px-2 text-xs font-normal text-slate-900 outline-none focus:border-teal-700 focus:ring-2 focus:ring-teal-100">
-                {atenciones.map((atencion) => <option key={atencion.id} value={atencion.id}>{fechaVisita(atencion.created_at)} · {atencion.diagnostico_cie10 || "Atención clínica"}</option>)}
-              </select>
-            </label>
+            {correccionActiva && hallazgoEnEdicion ? (
+              <>
+                <input type="hidden" name="atencionId" value={hallazgoEnEdicion.atencion_id} />
+                <p className="grid gap-1.5 text-sm font-medium text-slate-700">
+                  Corrección · misma atención
+                  <span className="flex h-10 items-center rounded-md border border-slate-200 bg-white px-2 text-xs font-normal text-slate-700">
+                    {fechaVisita(atenciones.find((atencion) => atencion.id === hallazgoEnEdicion.atencion_id)?.created_at ?? hallazgoEnEdicion.created_at)} · {hallazgoEnEdicion.afeccion}
+                  </span>
+                </p>
+              </>
+            ) : (
+              <label className="grid gap-1.5 text-sm font-medium text-slate-700" htmlFor="atencionId">
+                Atención · pie {puntoSeleccionado.lado}
+                <select id="atencionId" name="atencionId" required defaultValue={atenciones[0]?.id ?? ""} className="h-10 min-w-0 rounded-md border border-slate-300 bg-white px-2 text-xs font-normal text-slate-900 outline-none focus:border-teal-700 focus:ring-2 focus:ring-teal-100">
+                  {atenciones.map((atencion) => <option key={atencion.id} value={atencion.id}>{fechaVisita(atencion.created_at)} · {atencion.diagnostico_cie10 || "Atención clínica"}</option>)}
+                </select>
+              </label>
+            )}
             <label className="grid gap-1.5 text-sm font-medium text-slate-700" htmlFor="afeccion">
-              Afección o hallazgo
+              {correccionActiva ? "Afección corregida" : "Afección o hallazgo"}
               <input id="afeccion" name="afeccion" autoFocus required maxLength={120} value={afeccion} onChange={(evento) => setAfeccion(evento.target.value)} placeholder="Ej.: callosidad plantar" className="h-10 rounded-md border border-slate-300 bg-white px-3 font-normal text-slate-900 outline-none focus:border-teal-700 focus:ring-2 focus:ring-teal-100" />
             </label>
             <label className="grid gap-1.5 text-sm font-medium text-slate-700" htmlFor="dolor">
@@ -425,7 +544,7 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
             </label>
             <div className="flex gap-2 sm:justify-end">
               <button type="button" onClick={cancelarBorrador} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Cancelar</button>
-              <button type="submit" disabled={guardando || !persistenciaDisponible} className="rounded-md bg-teal-700 px-3 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-50">{guardando ? "Guardando…" : "Guardar"}</button>
+              <button type="submit" disabled={guardando || !persistenciaDisponible} className="rounded-md bg-teal-700 px-3 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-50">{guardando ? "Guardando…" : correccionActiva ? "Guardar corrección" : "Guardar"}</button>
             </div>
             {estadoGuardar.error && estadoGuardar.seleccionId === puntoSeleccionado.seleccionId && <p role="alert" className="text-sm text-red-700 lg:col-span-4">{estadoGuardar.error}</p>}
           </form>
@@ -442,7 +561,12 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
                     <p className="truncate font-medium text-slate-800">{hallazgo.afeccion}</p>
                     <p className="mt-0.5 truncate text-xs text-slate-500">{atencion ? `${fechaVisita(atencion.created_at)} · ${atencion.diagnostico_cie10 || "Atención clínica"}` : "Atención clínica"}</p>
                   </div>
-                  <span className="shrink-0 text-xs text-slate-600">{hallazgo.lado_pie} · Dolor {hallazgo.intensidad_dolor}/10</span>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span className="text-xs text-slate-600">{hallazgo.lado_pie} · Dolor {hallazgo.intensidad_dolor}/10</span>
+                    {idsReemplazados.has(hallazgo.id)
+                      ? <span className="text-xs text-slate-500">Reemplazada</span>
+                      : <button type="button" onClick={() => iniciarEdicion(hallazgo)} className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-700 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-800">Corregir</button>}
+                  </div>
                   {hallazgo.modelo_version !== MODELO_PIE_VERSION && <span className="shrink-0 text-xs text-amber-800">Modelo anterior</span>}
                 </li>
                 );

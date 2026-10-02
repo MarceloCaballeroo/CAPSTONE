@@ -86,6 +86,7 @@
 | `afeccion` | `text` | 1-120 characters |
 | `intensidad_dolor` | `int2` | 0-10 |
 | `creado_por` | `uuid` | References `usuario` |
+| `corrige_hallazgo_id` | `uuid` | Nullable; references a prior finding from the same attention |
 | `created_at` | `timestamptz` |  |
 
 ## Table `cita`
@@ -226,7 +227,7 @@
 | `tenant_hallazgo_clinico_select` | SELECT | authenticated | PERMISSIVE | Membership derived through `atencion -> ficha_clinica -> paciente` | — |
 | `tenant_hallazgo_clinico_insert` | INSERT | authenticated | PERMISSIVE | — | Creator is `auth.uid()` and tenant membership is derived through `atencion -> ficha_clinica -> paciente` |
 
-Findings are append-only. Each insert is written to `log_auditoria`; no UPDATE or DELETE policies are granted.
+Findings are append-only. Each insert is written to `log_auditoria`; no UPDATE or DELETE policies are granted. A correction is a new row whose `corrige_hallazgo_id` points to the finding it replaces. Only findings not referenced by another finding are active on the foot map.
 
 ### `cita`
 

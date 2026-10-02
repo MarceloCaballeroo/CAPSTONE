@@ -60,7 +60,7 @@ El plan clínica se justifica por capacidades propias de la organización —adm
 - **`atencion`**: los profesionales activos pueden leer las atenciones de su organización y registrar/editar únicamente las propias; la eliminación queda reservada al rol `admin`.
 - **`paciente`**: el personal clínico puede consultar, ingresar (requiere RUT válido) y actualizar datos de pacientes de su organización.
 - **`hallazgo_clinico`**: hallazgos inmutables ligados a una atención; cada inserción queda en la bitácora de auditoría.
-- **`log_auditoria`**: inserción estricta vía triggers automáticos; sin políticas de `UPDATE` ni `DELETE` — el registro es inmutable por diseño.
+- **`log_auditoria`**: el flujo normal inserta mediante triggers; los INSERT siguen sujetos a RLS por usuario y organización. No se permiten `UPDATE` ni `DELETE` — el registro es inmutable por diseño.
 
 ---
 

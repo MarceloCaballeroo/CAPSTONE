@@ -44,7 +44,7 @@ export default async function PacientePage({ params }: { params: Promise<{ id: s
   const { data: atenciones } = ficha ? await supabase.from("atencion").select("id, usuario_id, diagnostico_cie10, nivel_riesgo_iwgdf, requiere_derivacion, observaciones, created_at").eq("ficha_id", ficha.id).order("created_at", { ascending: false }) : { data: [] };
   const atencionIds = atenciones?.map((atencion) => atencion.id) ?? [];
   const { data: hallazgos, error: errorHallazgos } = atencionIds.length
-    ? await supabase.from("hallazgo_clinico").select("id, atencion_id, lado_pie, coordenada_x, coordenada_y, coordenada_z, normal_x, normal_y, normal_z, modelo_version, afeccion, intensidad_dolor, created_at").in("atencion_id", atencionIds).order("created_at", { ascending: true })
+    ? await supabase.from("hallazgo_clinico").select("id, atencion_id, corrige_hallazgo_id, lado_pie, coordenada_x, coordenada_y, coordenada_z, normal_x, normal_y, normal_z, modelo_version, afeccion, intensidad_dolor, created_at").in("atencion_id", atencionIds).order("created_at", { ascending: true })
     : { data: [], error: null };
   const { data: imagenes } = atencionIds.length ? await supabase.from("imagen_clinica").select("id, etiqueta, area_cm2, created_at").in("atencion_id", atencionIds).order("created_at", { ascending: false }) : { data: [] };
   const { data: derivaciones } = atencionIds.length ? await supabase.from("derivacion").select("id, motivo, especialidad_destino, estado, created_at, updated_at").in("atencion_id", atencionIds).order("created_at", { ascending: false }) : { data: [] };

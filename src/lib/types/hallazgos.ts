@@ -11,6 +11,7 @@ export type AtencionMarcable = {
 export type HallazgoClinico = {
   id: string;
   atencion_id: string;
+  corrige_hallazgo_id: string | null;
   lado_pie: LadoPie;
   coordenada_x: number;
   coordenada_y: number;
@@ -23,5 +24,10 @@ export type HallazgoClinico = {
   intensidad_dolor: number;
   created_at: string;
 };
+
+export function hallazgosVigentes(hallazgos: HallazgoClinico[]): HallazgoClinico[] {
+  const reemplazados = new Set(hallazgos.map((hallazgo) => hallazgo.corrige_hallazgo_id).filter((id): id is string => id !== null));
+  return hallazgos.filter((hallazgo) => !reemplazados.has(hallazgo.id));
+}
 
 export type EstadoGuardarHallazgo = { error?: string; hallazgo?: HallazgoClinico; seleccionId?: string };
