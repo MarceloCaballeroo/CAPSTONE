@@ -1,11 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { guardarHallazgoClinicoAction } from "@/app/actions/hallazgos";
+import type { AtencionMarcable, HallazgoClinico, LadoPie } from "@/lib/types/hallazgos";
+import { MODELO_PIE_VERSION } from "@/lib/types/hallazgos";
 
 type VistaPies = "ambos" | "izquierdo" | "derecho";
+type PuntoClinico = { seleccionId: string; lado: LadoPie; posicion: [number, number, number]; normal: [number, number, number] };
 
 type ParejaModelos = {
   izquierdo: THREE.Object3D;
@@ -14,6 +18,13 @@ type ParejaModelos = {
   ancho: number;
   largo: number;
   separacion: number;
+};
+
+type FootModelViewerProps = {
+  pacienteId: string;
+  atenciones: AtencionMarcable[];
+  hallazgos: HallazgoClinico[];
+  persistenciaDisponible: boolean;
 };
 
 function liberarModelo(modelo: THREE.Object3D) {
@@ -30,20 +41,58 @@ function liberarModelo(modelo: THREE.Object3D) {
   });
 }
 
-export function FootModelViewer() {
+function colorDolor(intensidad: number): number {
+  return intensidad >= 7 ? 0xdc2626 : intensidad >= 4 ? 0xd97706 : 0x0f766e;
+}
+
+function crearMarcador(color: number): THREE.Group {
+  const marcador = new THREE.Group();
+  const punto = new THREE.Mesh(
+    new THREE.SphereGeometry(0.085, 16, 12),
+    new THREE.MeshBasicMaterial({ color, depthTest: false }),
+  );
+  const anillo = new THREE.Mesh(
+    new THREE.RingGeometry(0.11, 0.17, 24),
+    new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, depthTest: false }),
+  );
+  marcador.add(punto, anillo);
+  return marcador;
+}
+
+function fechaVisita(fecha: string): string {
+  return new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", day: "numeric", month: "short", year: "numeric" }).format(new Date(fecha));
+}
+
+export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIniciales, persistenciaDisponible }: FootModelViewerProps) {
   const contenedorRef = useRef<HTMLDivElement>(null);
   const controlesRef = useRef<OrbitControls | null>(null);
+  const punteroInicialRef = useRef<{ x: number; y: number } | null>(null);
+  const atencionesRef = useRef(atenciones);
   const modelosRef = useRef<ParejaModelos | null>(null);
+  const marcadorPendienteRef = useRef<THREE.Group | null>(null);
+  const marcadoresRef = useRef(new Map<string, THREE.Group>());
+  const hallazgosRef = useRef(hallazgosIniciales);
+  const persistenciaRef = useRef(persistenciaDisponible);
   const vistaActualRef = useRef<VistaPies>("ambos");
   const encuadrarRef = useRef<(vista: VistaPies) => void>(() => {});
   const [estado, setEstado] = useState("Cargando modelo anatómico...");
   const [error, setError] = useState(false);
   const [modelosListos, setModelosListos] = useState(false);
   const [vista, setVista] = useState<VistaPies>("ambos");
+  const [puntoSeleccionado, setPuntoSeleccionado] = useState<PuntoClinico | null>(null);
+  const [afeccion, setAfeccion] = useState("");
+  const [dolor, setDolor] = useState(0);
+  const [estadoGuardar, formAction, guardando] = useActionState(guardarHallazgoClinicoAction, {});
+  const formularioVisible = Boolean(puntoSeleccionado && puntoSeleccionado.seleccionId !== estadoGuardar.seleccionId);
+  const hallazgos = estadoGuardar.hallazgo && !hallazgosIniciales.some(({ id }) => id === estadoGuardar.hallazgo?.id)
+    ? [...hallazgosIniciales, estadoGuardar.hallazgo].sort((a, b) => a.created_at.localeCompare(b.created_at))
+    : hallazgosIniciales;
+  const atencionesSinHallazgos = atenciones.filter((atencion) => !hallazgos.some((hallazgo) => hallazgo.atencion_id === atencion.id));
 
   useEffect(() => {
     const contenedor = contenedorRef.current;
     if (!contenedor) return;
+    const marcadores = marcadoresRef.current;
 
     let desmontado = false;
     let modeloCargado: THREE.Object3D | null = null;
@@ -119,6 +168,64 @@ export function FootModelViewer() {
       renderizador.setSize(ancho, alto, false);
       encuadrar(vistaActualRef.current);
     };
+
+    const seleccionarPunto = (evento: MouseEvent) => {
+      const modelos = modelosRef.current;
+      if (!modelos || !persistenciaRef.current || !atencionesRef.current.length) return;
+      const punteroInicial = punteroInicialRef.current;
+      punteroInicialRef.current = null;
+      if (punteroInicial && Math.hypot(evento.clientX - punteroInicial.x, evento.clientY - punteroInicial.y) > 6) return;
+
+      const limites = renderizador.domElement.getBoundingClientRect();
+      const puntero = new THREE.Vector2(
+        ((evento.clientX - limites.left) / limites.width) * 2 - 1,
+        -((evento.clientY - limites.top) / limites.height) * 2 + 1,
+      );
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(puntero, camara);
+      const interseccion = raycaster.intersectObjects([modelos.izquierdo, modelos.derecho], true)[0];
+      if (!interseccion?.face) return;
+
+      let raiz: THREE.Object3D = interseccion.object;
+      while (raiz.parent && raiz.parent !== escena) raiz = raiz.parent;
+      const lado: LadoPie = raiz === modelos.izquierdo ? "izquierdo" : "derecho";
+      const normal = interseccion.face.normal.clone().applyMatrix3(
+        new THREE.Matrix3().getNormalMatrix(interseccion.object.matrixWorld),
+      ).normalize();
+      const normalLocal = normal.clone().transformDirection(raiz.matrixWorld.clone().invert());
+      const posicionMarcador = interseccion.point.clone().addScaledVector(normal, 0.018);
+      const marcador = crearMarcador(0xf59e0b);
+      marcador.position.copy(posicionMarcador);
+      marcador.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
+
+      if (marcadorPendienteRef.current) {
+        escena.remove(marcadorPendienteRef.current);
+        liberarModelo(marcadorPendienteRef.current);
+      }
+      marcadorPendienteRef.current = marcador;
+      escena.add(marcador);
+
+      const local = raiz.worldToLocal(interseccion.point.clone());
+      if (lado === "izquierdo") {
+        local.x *= -1;
+        normalLocal.x *= -1;
+      }
+      setAfeccion("");
+      setDolor(0);
+      setPuntoSeleccionado({
+        seleccionId: crypto.randomUUID(),
+        lado,
+        posicion: [local.x, local.y, local.z],
+        normal: [normalLocal.x, normalLocal.y, normalLocal.z],
+      });
+    };
+
+    const iniciarPuntero = (evento: PointerEvent) => {
+      punteroInicialRef.current = { x: evento.clientX, y: evento.clientY };
+    };
+
+    renderizador.domElement.addEventListener("pointerdown", iniciarPuntero);
+    renderizador.domElement.addEventListener("click", seleccionarPunto);
     const observador = new ResizeObserver(ajustarTamano);
     observador.observe(contenedor);
     ajustarTamano();
@@ -169,6 +276,26 @@ export function FootModelViewer() {
         escena.add(modelo);
         escena.add(modeloDerecho);
         modelosRef.current = { izquierdo: modeloDerecho, derecho: modelo, alto, ancho, largo, separacion };
+        modelosRef.current.izquierdo.updateMatrixWorld(true);
+        modelosRef.current.derecho.updateMatrixWorld(true);
+
+        for (const hallazgo of hallazgosRef.current) {
+          if (hallazgo.modelo_version !== MODELO_PIE_VERSION) continue;
+          const raizHallazgo = hallazgo.lado_pie === "izquierdo" ? modelosRef.current.izquierdo : modelosRef.current.derecho;
+          const puntoLocal = new THREE.Vector3(hallazgo.coordenada_x, hallazgo.coordenada_y, hallazgo.coordenada_z);
+          const normalHallazgo = new THREE.Vector3(hallazgo.normal_x, hallazgo.normal_y, hallazgo.normal_z);
+          if (hallazgo.lado_pie === "izquierdo") {
+            puntoLocal.x *= -1;
+            normalHallazgo.x *= -1;
+          }
+          const normalGlobal = normalHallazgo.transformDirection(raizHallazgo.matrixWorld);
+          const marcador = crearMarcador(colorDolor(hallazgo.intensidad_dolor));
+          marcador.position.copy(raizHallazgo.localToWorld(puntoLocal)).addScaledVector(normalGlobal, 0.018);
+          marcador.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normalGlobal);
+          escena.add(marcador);
+          marcadoresRef.current.set(hallazgo.id, marcador);
+        }
+
         setModelosListos(true);
         encuadrar(vistaActualRef.current);
         setError(false);
@@ -194,20 +321,49 @@ export function FootModelViewer() {
       window.cancelAnimationFrame(cuadroAnimacion);
       observador.disconnect();
       controles.dispose();
+      renderizador.domElement.removeEventListener("pointerdown", iniciarPuntero);
+      renderizador.domElement.removeEventListener("click", seleccionarPunto);
       controlesRef.current = null;
       modelosRef.current = null;
       encuadrarRef.current = () => {};
       setModelosListos(false);
+      if (marcadorPendienteRef.current) liberarModelo(marcadorPendienteRef.current);
+      marcadores.forEach(liberarModelo);
+      marcadorPendienteRef.current = null;
+      marcadores.clear();
       if (modeloCargado) liberarModelo(modeloCargado);
       renderizador.dispose();
       renderizador.domElement.remove();
     };
   }, []);
 
+  useEffect(() => {
+    const hallazgo = estadoGuardar.hallazgo;
+    if (!hallazgo || estadoGuardar.seleccionId !== puntoSeleccionado?.seleccionId) return;
+
+    const marcador = marcadorPendienteRef.current;
+    if (marcador) {
+      marcador.traverse((objeto) => {
+        if (objeto instanceof THREE.Mesh) objeto.material.color.setHex(colorDolor(hallazgo.intensidad_dolor));
+      });
+      marcadoresRef.current.set(hallazgo.id, marcador);
+      marcadorPendienteRef.current = null;
+    }
+  }, [estadoGuardar.hallazgo, estadoGuardar.seleccionId, puntoSeleccionado?.seleccionId]);
+
   const seleccionarVista = (nuevaVista: VistaPies) => {
     vistaActualRef.current = nuevaVista;
     setVista(nuevaVista);
     encuadrarRef.current(nuevaVista);
+  };
+
+  const cancelarBorrador = () => {
+    if (marcadorPendienteRef.current) {
+      marcadorPendienteRef.current.removeFromParent();
+      liberarModelo(marcadorPendienteRef.current);
+      marcadorPendienteRef.current = null;
+    }
+    setPuntoSeleccionado(null);
   };
 
   return (
@@ -237,9 +393,78 @@ export function FootModelViewer() {
           {estado}
         </p>
       </div>
+      <div className="grid gap-4 border-t border-slate-200 p-4 sm:p-5">
+        {persistenciaDisponible ? (
+          atenciones.length ? <p className="text-xs text-slate-500">Haz clic en el pie para marcar una afección y asociarla a una atención. Los puntos quedan en su historial clínico.</p>
+            : <p className="text-sm text-slate-600">Registra una atención clínica antes de ubicar hallazgos en el mapa.</p>
+        ) : <p role="alert" className="text-sm text-amber-800">No se pudo cargar el historial de marcas. Verifica que la migración del visor esté aplicada.</p>}
+        {formularioVisible && puntoSeleccionado && (
+          <form className="grid gap-4 rounded-lg border border-teal-200 bg-teal-50/60 p-4 lg:grid-cols-[minmax(180px,0.8fr)_minmax(0,1fr)_minmax(180px,0.7fr)_auto] lg:items-end" action={formAction}>
+            <input type="hidden" name="seleccionId" value={puntoSeleccionado.seleccionId} />
+            <input type="hidden" name="pacienteId" value={pacienteId} />
+            <input type="hidden" name="ladoPie" value={puntoSeleccionado.lado} />
+            <input type="hidden" name="x" value={puntoSeleccionado.posicion[0]} />
+            <input type="hidden" name="y" value={puntoSeleccionado.posicion[1]} />
+            <input type="hidden" name="z" value={puntoSeleccionado.posicion[2]} />
+            <input type="hidden" name="normalX" value={puntoSeleccionado.normal[0]} />
+            <input type="hidden" name="normalY" value={puntoSeleccionado.normal[1]} />
+            <input type="hidden" name="normalZ" value={puntoSeleccionado.normal[2]} />
+            <label className="grid gap-1.5 text-sm font-medium text-slate-700" htmlFor="atencionId">
+              Atención · pie {puntoSeleccionado.lado}
+              <select id="atencionId" name="atencionId" required defaultValue={atenciones[0]?.id ?? ""} className="h-10 min-w-0 rounded-md border border-slate-300 bg-white px-2 text-xs font-normal text-slate-900 outline-none focus:border-teal-700 focus:ring-2 focus:ring-teal-100">
+                {atenciones.map((atencion) => <option key={atencion.id} value={atencion.id}>{fechaVisita(atencion.created_at)} · {atencion.diagnostico_cie10 || "Atención clínica"}</option>)}
+              </select>
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium text-slate-700" htmlFor="afeccion">
+              Afección o hallazgo
+              <input id="afeccion" name="afeccion" autoFocus required maxLength={120} value={afeccion} onChange={(evento) => setAfeccion(evento.target.value)} placeholder="Ej.: callosidad plantar" className="h-10 rounded-md border border-slate-300 bg-white px-3 font-normal text-slate-900 outline-none focus:border-teal-700 focus:ring-2 focus:ring-teal-100" />
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium text-slate-700" htmlFor="dolor">
+              Intensidad de dolor <output className="font-semibold text-teal-800">{dolor}/10</output>
+              <input id="dolor" name="intensidadDolor" type="range" min="0" max="10" step="1" value={dolor} onChange={(evento) => setDolor(Number(evento.target.value))} className="h-10 accent-teal-700" />
+            </label>
+            <div className="flex gap-2 sm:justify-end">
+              <button type="button" onClick={cancelarBorrador} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Cancelar</button>
+              <button type="submit" disabled={guardando || !persistenciaDisponible} className="rounded-md bg-teal-700 px-3 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-50">{guardando ? "Guardando…" : "Guardar"}</button>
+            </div>
+            {estadoGuardar.error && estadoGuardar.seleccionId === puntoSeleccionado.seleccionId && <p role="alert" className="text-sm text-red-700 lg:col-span-4">{estadoGuardar.error}</p>}
+          </form>
+        )}
+        {hallazgos.length > 0 && (
+          <div className="grid gap-2">
+            <h3 className="text-sm font-semibold text-slate-800">Evolución marcada en el mapa</h3>
+            <ul className="grid gap-2 sm:grid-cols-2">
+              {hallazgos.map((hallazgo) => {
+                const atencion = atenciones.find((visita) => visita.id === hallazgo.atencion_id);
+                return (
+                <li key={hallazgo.id} className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-slate-800">{hallazgo.afeccion}</p>
+                    <p className="mt-0.5 truncate text-xs text-slate-500">{atencion ? `${fechaVisita(atencion.created_at)} · ${atencion.diagnostico_cie10 || "Atención clínica"}` : "Atención clínica"}</p>
+                  </div>
+                  <span className="shrink-0 text-xs text-slate-600">{hallazgo.lado_pie} · Dolor {hallazgo.intensidad_dolor}/10</span>
+                  {hallazgo.modelo_version !== MODELO_PIE_VERSION && <span className="shrink-0 text-xs text-amber-800">Modelo anterior</span>}
+                </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+        {atencionesSinHallazgos.length > 0 && (
+          <p className="text-xs text-slate-500">
+            {atencionesSinHallazgos.length} {atencionesSinHallazgos.length === 1 ? "atención previa aún no tiene" : "atenciones previas aún no tienen"} ubicaciones anatómicas. Selecciona una al marcar para añadirlas al mapa.
+          </p>
+        )}
+      </div>
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 px-5 py-3 text-xs text-slate-500">
-        <span>Arrastra para rotar · rueda o pellizca para acercar</span>
-        <span>{vista === "ambos" ? "Vista comparativa" : vista === "izquierdo" ? "Pie izquierdo" : "Pie derecho"}</span>
+        <span>Arrastra para rotar · rueda o pellizca para acercar · clic en el pie para marcar</span>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1" aria-label="Leyenda de intensidad de dolor">
+          <span className="font-medium text-slate-600">Dolor:</span>
+          <span className="inline-flex items-center gap-1"><i aria-hidden="true" className="h-2 w-2 rounded-full bg-teal-700" />0–3</span>
+          <span className="inline-flex items-center gap-1"><i aria-hidden="true" className="h-2 w-2 rounded-full bg-amber-600" />4–6</span>
+          <span className="inline-flex items-center gap-1"><i aria-hidden="true" className="h-2 w-2 rounded-full bg-red-700" />7–10</span>
+          <span className="ml-1 border-l border-slate-200 pl-3">{vista === "ambos" ? "Vista comparativa" : vista === "izquierdo" ? "Pie izquierdo" : "Pie derecho"}</span>
+        </div>
       </div>
     </section>
   );

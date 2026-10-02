@@ -67,6 +67,27 @@
 | `observaciones` | `text` |  Nullable |
 | `created_at` | `timestamptz` |  |
 
+## Table `hallazgo_clinico`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `id` | `uuid` | Primary |
+| `atencion_id` | `uuid` | References `atencion`, no delete |
+| `lado_pie` | `text` | `izquierdo` / `derecho` |
+| `coordenada_x` | `float8` | Local coordinates on model `foot-v1` |
+| `coordenada_y` | `float8` | Local coordinates on model `foot-v1` |
+| `coordenada_z` | `float8` | Local coordinates on model `foot-v1` |
+| `normal_x` | `float8` | Surface normal X |
+| `normal_y` | `float8` | Surface normal Y |
+| `normal_z` | `float8` | Surface normal Z |
+| `modelo_version` | `text` | Defaults to `foot-v1` |
+| `afeccion` | `text` | 1-120 characters |
+| `intensidad_dolor` | `int2` | 0-10 |
+| `creado_por` | `uuid` | References `usuario` |
+| `created_at` | `timestamptz` |  |
+
 ## Table `cita`
 
 ### Columns
@@ -197,6 +218,15 @@
 | `tenant_atencion_insert` | INSERT | authenticated | PERMISSIVE | — | `((usuario_id = auth.uid()) AND (EXISTS ( SELECT 1    FROM (ficha_clinica      JOIN paciente ON ((paciente.id = ficha_clinica.paciente_id)))   WHERE ((ficha_clinica.id = atencion.ficha_id) AND private.es_miembro_de_organizacion(paciente.organizacion_id)))))` |
 | `tenant_atencion_update` | UPDATE | authenticated | PERMISSIVE | `(usuario_id = auth.uid())` | `((usuario_id = auth.uid()) AND (EXISTS ( SELECT 1    FROM (ficha_clinica      JOIN paciente ON ((paciente.id = ficha_clinica.paciente_id)))   WHERE ((ficha_clinica.id = atencion.ficha_id) AND private.es_miembro_de_organizacion(paciente.organizacion_id)))))` |
 | `tenant_atencion_delete` | DELETE | authenticated | PERMISSIVE | `(EXISTS ( SELECT 1    FROM usuario   WHERE ((usuario.id = auth.uid()) AND (usuario.organizacion_id = ( SELECT paciente.organizacion_id            FROM (ficha_clinica              JOIN paciente ON ((paciente.id = ficha_clinica.paciente_id)))           WHERE (ficha_clinica.id = atencion.ficha_id))) AND (usuario.rol = 'admin'::text) AND (usuario.activo = true))))` | — |
+
+### `hallazgo_clinico`
+
+| Policy | Command | Roles | Action | USING | WITH CHECK |
+|--------|---------|-------|--------|-------|------------|
+| `tenant_hallazgo_clinico_select` | SELECT | authenticated | PERMISSIVE | Membership derived through `atencion -> ficha_clinica -> paciente` | — |
+| `tenant_hallazgo_clinico_insert` | INSERT | authenticated | PERMISSIVE | — | Creator is `auth.uid()` and tenant membership is derived through `atencion -> ficha_clinica -> paciente` |
+
+Findings are append-only. Each insert is written to `log_auditoria`; no UPDATE or DELETE policies are granted.
 
 ### `cita`
 

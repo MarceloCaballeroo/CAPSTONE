@@ -41,6 +41,7 @@ PodoCare resuelve este vacío con un sistema que no trata la seguridad como un a
 | `paciente` | Datos personales y de contacto del paciente, incluyendo consentimiento informado explícito. |
 | `ficha_clinica` | Vínculo único por paciente con sus antecedentes clínicos generales. |
 | `atencion` | Registro de cada consulta: diagnóstico CIE-10, nivel de riesgo IWGDF (muy bajo / bajo / moderado / alto), necesidad de derivación y observaciones. |
+| `hallazgo_clinico` | Afecciones ubicadas en el modelo del pie por atención, intensidad de dolor y coordenadas versionadas. |
 | `cita` | Agendamiento (estados: agendada, confirmada, en espera, atendida, cancelada, no asiste). |
 | `imagen_clinica` | Registros fotográficos de las atenciones, con estimación de área en cm². |
 | `derivacion` | Interconsultas a especialistas cuando la atención lo requiere. |
@@ -55,9 +56,10 @@ El plan clínica se justifica por capacidades propias de la organización —adm
 
 ### Políticas Row Level Security (RLS)
 
-- **`paciente` / `ficha_clinica` / `atencion` / `cita` / `imagen_clinica` / `derivacion`**: acceso restringido a los miembros activos de la misma organización.
+- **`paciente` / `ficha_clinica` / `atencion` / `hallazgo_clinico` / `cita` / `imagen_clinica` / `derivacion`**: acceso restringido a los miembros activos de la misma organización.
 - **`atencion`**: los profesionales activos pueden leer las atenciones de su organización y registrar/editar únicamente las propias; la eliminación queda reservada al rol `admin`.
 - **`paciente`**: el personal clínico puede consultar, ingresar (requiere RUT válido) y actualizar datos de pacientes de su organización.
+- **`hallazgo_clinico`**: hallazgos inmutables ligados a una atención; cada inserción queda en la bitácora de auditoría.
 - **`log_auditoria`**: inserción estricta vía triggers automáticos; sin políticas de `UPDATE` ni `DELETE` — el registro es inmutable por diseño.
 
 ---

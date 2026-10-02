@@ -5,6 +5,7 @@ import { Button } from "@/components/common/Button";
 import { Card } from "@/components/common/Card";
 import { createClient } from "@/lib/supabase/server";
 import { FootModelViewer } from "@/features/patients/FootModelViewer";
+import type { AtencionMarcable, HallazgoClinico } from "@/lib/types/hallazgos";
 
 const etiquetasRiesgo: Record<string, string> = {
   muy_bajo: "Muy bajo",
@@ -41,6 +42,9 @@ export default async function PacientePage({ params }: { params: Promise<{ id: s
   const { data: ficha } = await supabase.from("ficha_clinica").select("id, antecedentes, updated_at").eq("paciente_id", id).maybeSingle();
   const { data: atenciones } = ficha ? await supabase.from("atencion").select("id, usuario_id, diagnostico_cie10, nivel_riesgo_iwgdf, requiere_derivacion, observaciones, created_at").eq("ficha_id", ficha.id).order("created_at", { ascending: false }) : { data: [] };
   const atencionIds = atenciones?.map((atencion) => atencion.id) ?? [];
+  const { data: hallazgos, error: errorHallazgos } = atencionIds.length
+    ? await supabase.from("hallazgo_clinico").select("id, atencion_id, lado_pie, coordenada_x, coordenada_y, coordenada_z, normal_x, normal_y, normal_z, modelo_version, afeccion, intensidad_dolor, created_at").in("atencion_id", atencionIds).order("created_at", { ascending: true })
+    : { data: [], error: null };
   const { data: imagenes } = atencionIds.length ? await supabase.from("imagen_clinica").select("id, etiqueta, area_cm2, created_at").in("atencion_id", atencionIds).order("created_at", { ascending: false }) : { data: [] };
   const { data: derivaciones } = atencionIds.length ? await supabase.from("derivacion").select("id, motivo, especialidad_destino, estado, created_at, updated_at").in("atencion_id", atencionIds).order("created_at", { ascending: false }) : { data: [] };
   const usuarioIds = [...new Set((atenciones ?? []).map((atencion) => atencion.usuario_id).filter((usuarioId): usuarioId is string => Boolean(usuarioId)))];
@@ -89,7 +93,13 @@ export default async function PacientePage({ params }: { params: Promise<{ id: s
       </section>
 
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.7fr)_minmax(280px,0.8fr)]">
-        <FootModelViewer />
+        <FootModelViewer
+          key={id}
+          pacienteId={id}
+          atenciones={(atenciones ?? []) as AtencionMarcable[]}
+          hallazgos={(hallazgos ?? []) as HallazgoClinico[]}
+          persistenciaDisponible={!errorHallazgos}
+        />
 
         <div className="grid gap-5">
           <Card>
