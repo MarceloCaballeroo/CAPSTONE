@@ -16,6 +16,15 @@ function etiquetaRiesgo(riesgo: string | undefined): string {
   }[riesgo ?? ""] ?? "Sin atenciones";
 }
 
+function clasesRiesgo(riesgo: string | undefined): string {
+  return {
+    muy_bajo: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    bajo: "border-teal-200 bg-teal-50 text-teal-800",
+    moderado: "border-amber-200 bg-amber-50 text-amber-800",
+    alto: "border-red-200 bg-red-50 text-red-800",
+  }[riesgo ?? ""] ?? "border-slate-200 bg-slate-50 text-slate-600";
+}
+
 export default async function PacientesPage({ searchParams }: { searchParams: Promise<{ q?: string; pagina?: string }> }) {
   const parametros = await searchParams;
   const busqueda = parametros.q?.trim() ?? "";
@@ -53,19 +62,22 @@ export default async function PacientesPage({ searchParams }: { searchParams: Pr
     <>
       <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-sm font-medium text-teal-700">Gestión clínica</p>
-          <h1 className="mt-2 text-4xl font-semibold tracking-tight text-slate-900">Pacientes</h1>
-          <p className="mt-2 text-slate-500">Busca y revisa las fichas de tu organización.</p>
+          <p className="text-sm font-medium text-teal-700">Gestión clínica <span className="text-slate-300">/</span> Directorio</p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">Pacientes</h1>
+          <p className="mt-2 text-sm text-slate-500">Consulta datos de contacto y estado clínico reciente.</p>
         </div>
         <Link href="/patients/nuevo"><Button>Nuevo paciente</Button></Link>
       </header>
 
-      <Card>
-        <form className="flex flex-col gap-3 sm:flex-row" action="/patients" method="get">
-          <label className="sr-only" htmlFor="q">Buscar paciente por nombre o RUT</label>
-          <input id="q" name="q" defaultValue={busqueda} placeholder="Buscar por nombre o RUT" className="h-11 min-w-0 flex-1 rounded-lg border border-slate-300 px-3 text-slate-900 outline-none focus:border-teal-700 focus:ring-2 focus:ring-teal-100" />
-          <Button type="submit" variant="secondary">Buscar</Button>
-        </form>
+      <Card className="p-4 sm:p-5">
+        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+          <form className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row" action="/patients" method="get">
+            <label className="sr-only" htmlFor="q">Buscar paciente por nombre o RUT</label>
+            <input id="q" name="q" defaultValue={busqueda} placeholder="Buscar por nombre o RUT" className="h-11 min-w-0 flex-1 rounded-lg border border-slate-300 px-3 text-sm text-slate-900 outline-none focus:border-teal-700 focus:ring-2 focus:ring-teal-100" />
+            <Button type="submit" variant="secondary">Buscar</Button>
+          </form>
+          <p className="shrink-0 text-sm text-slate-500"><span className="font-semibold text-slate-900">{count ?? 0}</span> {(count ?? 0) === 1 ? "paciente" : "pacientes"}</p>
+        </div>
       </Card>
 
       <div className="mt-6">
@@ -80,12 +92,12 @@ export default async function PacientesPage({ searchParams }: { searchParams: Pr
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {pacientesData.map((paciente) => (
-                    <tr key={paciente.id} className="hover:bg-slate-50">
-                      <td className="px-6 py-4"><Link className="font-medium text-teal-800 hover:underline" href={`/patients/${paciente.id}`}>{paciente.nombre} {paciente.apellido_paterno} {paciente.apellido_materno ?? ""}</Link></td>
+                    <tr key={paciente.id} className="transition-colors hover:bg-teal-50/40">
+                      <td className="px-6 py-4"><Link className="flex items-center gap-3 font-medium text-slate-900 hover:text-teal-800" href={`/patients/${paciente.id}`}><span aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-teal-50 text-xs font-semibold text-teal-800">{`${paciente.nombre[0] ?? ""}${paciente.apellido_paterno[0] ?? ""}`.toUpperCase()}</span><span>{paciente.nombre} {paciente.apellido_paterno} {paciente.apellido_materno ?? ""}<span className="mt-0.5 block text-xs font-normal text-slate-500">{paciente.consentimiento ? "Consentimiento registrado" : "Consentimiento pendiente"}</span></span></Link></td>
                       <td className="px-6 py-4 text-slate-600">{formatearRut(paciente.rut)}</td>
-                      <td className="px-6 py-4"><span className={riesgoPorPaciente.get(paciente.id) === "alto" ? "font-semibold text-red-700" : "text-slate-600"}>{etiquetaRiesgo(riesgoPorPaciente.get(paciente.id))}</span></td>
+                      <td className="px-6 py-4"><span className={`inline-flex rounded-md border px-2.5 py-1 text-xs font-medium ${clasesRiesgo(riesgoPorPaciente.get(paciente.id))}`}>{etiquetaRiesgo(riesgoPorPaciente.get(paciente.id))}</span></td>
                       <td className="px-6 py-4 text-slate-600">{paciente.telefono ?? "Sin teléfono"}</td>
-                      <td className="px-6 py-4 text-right"><Link className="font-medium text-teal-800 hover:underline" href={`/patients/${paciente.id}`}>Ver ficha</Link></td>
+                      <td className="px-6 py-4 text-right"><Link className="inline-flex items-center rounded-md border border-slate-200 px-3 py-2 text-xs font-semibold text-teal-800 transition-colors hover:border-teal-700 hover:bg-white" href={`/patients/${paciente.id}`}>Ver ficha <span aria-hidden="true" className="ml-1">→</span></Link></td>
                     </tr>
                   ))}
                 </tbody>

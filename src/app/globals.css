@@ -24,3 +24,37 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+@page {
+  size: A4;
+  margin: 14mm;
+}
+
+@media print {
+  body {
+    background: #fff;
+    color: #111827;
+  }
+
+  .print-hidden {
+    display: none !important;
+  }
+
+  .patient-record {
+    gap: 12px;
+  }
+
+  .patient-record section,
+  .patient-record [class*="rounded-"] {
+    box-shadow: none !important;
+  }
+
+  .patient-record li {
+    break-inside: avoid;
+  }
+
+  .patient-record h1,
+  .patient-record h2 {
+    break-after: avoid;
+  }
+}

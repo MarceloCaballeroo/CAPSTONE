@@ -23,7 +23,7 @@ export async function DashboardLayout({ children }: PropsWithChildren) {
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900 antialiased lg:flex-row">
-      <aside className="sticky top-0 z-30 flex w-full shrink-0 flex-col border-b border-slate-800 bg-slate-900 text-slate-300 lg:h-dvh lg:min-h-dvh lg:w-64 lg:border-b-0 lg:border-r">
+      <aside className="sticky top-0 z-30 flex w-full shrink-0 flex-col border-b border-slate-800 bg-slate-900 text-slate-300 print:hidden lg:h-dvh lg:min-h-dvh lg:w-64 lg:border-b-0 lg:border-r">
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="flex h-16 shrink-0 items-center border-b border-slate-800 bg-slate-950/40 px-5">
             <div aria-hidden="true" className="mr-3 grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-teal-500/20 bg-teal-950/40 font-semibold text-teal-300">P</div>
@@ -52,7 +52,7 @@ export async function DashboardLayout({ children }: PropsWithChildren) {
       </aside>
 
       <div className="flex min-h-screen min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 sm:px-6 lg:px-8">
+        <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 sm:px-6 lg:px-8 print:hidden">
           <div className="flex min-w-0 items-center gap-2 sm:gap-4">
             <div className="flex min-w-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 sm:px-3">
               <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-teal-600" />
@@ -68,8 +68,8 @@ export async function DashboardLayout({ children }: PropsWithChildren) {
             </div>
           </div>
         </header>
-        <main className="flex-1 px-4 py-5 sm:px-6 md:py-7 lg:px-8">
-          <div className="mx-auto w-full max-w-7xl">{children}</div>
+        <main className="flex-1 px-4 py-5 sm:px-6 md:py-7 lg:px-8 print:p-0">
+          <div className="mx-auto w-full max-w-7xl print:max-w-none">{children}</div>
         </main>
       </div>
     </div>

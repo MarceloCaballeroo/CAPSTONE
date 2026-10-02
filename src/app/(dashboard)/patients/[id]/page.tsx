@@ -5,6 +5,7 @@ import { Button } from "@/components/common/Button";
 import { Card } from "@/components/common/Card";
 import { createClient } from "@/lib/supabase/server";
 import { FootModelViewer } from "@/features/patients/FootModelViewer";
+import { PrintFichaButton } from "@/features/patients/PrintFichaButton";
 import type { AtencionMarcable, HallazgoClinico } from "@/lib/types/hallazgos";
 
 const etiquetasRiesgo: Record<string, string> = {
@@ -57,8 +58,11 @@ export default async function PacientePage({ params }: { params: Promise<{ id: s
   const nombreCompleto = `${paciente.nombre} ${paciente.apellido_paterno} ${paciente.apellido_materno ?? ""}`.trim();
 
   return (
-    <div className="grid gap-5">
-      <Link className="w-fit text-sm font-medium text-teal-800 hover:underline" href="/patients">← Volver a pacientes</Link>
+    <div className="patient-record grid gap-5">
+      <div className="print-hidden flex flex-wrap items-center justify-between gap-3">
+        <Link className="w-fit text-sm font-medium text-teal-800 hover:underline" href="/patients">← Volver a pacientes</Link>
+        <PrintFichaButton />
+      </div>
 
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
         <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-start">
@@ -88,18 +92,20 @@ export default async function PacientePage({ params }: { params: Promise<{ id: s
               </div>
             </div>
           </div>
-          <Link className="shrink-0" href={`/patients/${id}/editar`}><Button variant="secondary">Editar datos</Button></Link>
+          <Link className="shrink-0 print-hidden" href={`/patients/${id}/editar`}><Button variant="secondary">Editar datos</Button></Link>
         </div>
       </section>
 
-      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.7fr)_minmax(280px,0.8fr)]">
-        <FootModelViewer
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.7fr)_minmax(280px,0.8fr)] print:grid-cols-1">
+        <div className="print-hidden">
+          <FootModelViewer
           key={id}
           pacienteId={id}
           atenciones={(atenciones ?? []) as AtencionMarcable[]}
           hallazgos={(hallazgos ?? []) as HallazgoClinico[]}
           persistenciaDisponible={!errorHallazgos}
-        />
+          />
+        </div>
 
         <div className="grid gap-5">
           <Card>
@@ -150,6 +156,16 @@ export default async function PacientePage({ params }: { params: Promise<{ id: s
                     </div>
                   </div>
                   {atencion.observaciones && <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-600">{atencion.observaciones}</p>}
+                  {hallazgos?.some((hallazgo) => hallazgo.atencion_id === atencion.id) && (
+                    <ul className="mt-3 flex flex-wrap gap-2" aria-label="Hallazgos clínicos">
+                      {hallazgos.filter((hallazgo) => hallazgo.atencion_id === atencion.id).map((hallazgo) => (
+                        <li className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-700" key={hallazgo.id}>
+                          {hallazgo.afeccion} · Pie {hallazgo.lado_pie === "izquierdo" ? "izquierdo" : "derecho"}
+                          {hallazgo.intensidad_dolor !== null ? ` · Dolor ${hallazgo.intensidad_dolor}/10` : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </li>
               ))}
             </ol>
