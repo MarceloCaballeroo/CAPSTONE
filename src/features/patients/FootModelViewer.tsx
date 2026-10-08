@@ -1,14 +1,15 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { ClickTooltip } from "@/components/common/ClickTooltip";
 import { guardarHallazgoClinicoAction } from "@/app/actions/hallazgos";
 import type { AtencionMarcable, HallazgoClinico, LadoPie } from "@/lib/types/hallazgos";
 import { hallazgosVigentes, MODELO_PIE_VERSION } from "@/lib/types/hallazgos";
 
-type VistaPies = "ambos" | "izquierdo" | "derecho";
+export type VistaPies = "ambos" | "izquierdo" | "derecho";
 type PuntoClinico = { seleccionId: string; lado: LadoPie; posicion: [number, number, number]; normal: [number, number, number] };
 
 type ParejaModelos = {
@@ -22,9 +23,16 @@ type ParejaModelos = {
 
 type FootModelViewerProps = {
   pacienteId: string;
-  atenciones: AtencionMarcable[];
+  atenciones: AtencionLineaTiempo[];
   hallazgos: HallazgoClinico[];
   persistenciaDisponible: boolean;
+};
+
+export type AtencionLineaTiempo = AtencionMarcable & {
+  nivel_riesgo_iwgdf?: string | null;
+  requiere_derivacion?: boolean;
+  observaciones?: string | null;
+  profesional?: string | null;
 };
 
 function liberarModelo(modelo: THREE.Object3D) {
@@ -63,8 +71,66 @@ function fechaVisita(fecha: string): string {
   return new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", day: "numeric", month: "short", year: "numeric" }).format(new Date(fecha));
 }
 
+function fechaAtencion(fecha: string): string {
+  return new Intl.DateTimeFormat("es-CL", {
+    timeZone: "America/Santiago",
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(fecha));
+}
+
+function MenuHallazgo({ onCorregir }: { onCorregir: () => void }) {
+  const id = useId();
+  const contenedorRef = useRef<HTMLDivElement>(null);
+  const botonRef = useRef<HTMLButtonElement>(null);
+  const opcionRef = useRef<HTMLButtonElement>(null);
+  const [abierto, setAbierto] = useState(false);
+
+  useEffect(() => {
+    if (!abierto) return;
+    opcionRef.current?.focus();
+    const cerrarFuera = (evento: PointerEvent) => {
+      if (!contenedorRef.current?.contains(evento.target as Node)) setAbierto(false);
+    };
+    const cerrarConEscape = (evento: KeyboardEvent) => {
+      if (evento.key !== "Escape") return;
+      setAbierto(false);
+      botonRef.current?.focus();
+    };
+    document.addEventListener("pointerdown", cerrarFuera);
+    document.addEventListener("keydown", cerrarConEscape);
+    return () => {
+      document.removeEventListener("pointerdown", cerrarFuera);
+      document.removeEventListener("keydown", cerrarConEscape);
+    };
+  }, [abierto]);
+
+  return (
+    <div ref={contenedorRef} className="relative shrink-0">
+      <button ref={botonRef} type="button" aria-label="Más opciones del hallazgo" aria-haspopup="menu" aria-expanded={abierto} aria-controls={id}
+        onClick={() => setAbierto(!abierto)} className="rounded-md px-2 py-1 text-lg leading-none text-slate-500 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-teal-700">
+        ⋯
+      </button>
+      <div id={id} role="menu" hidden={!abierto} className="absolute right-0 top-full z-20 mt-1 w-64 rounded-lg border border-slate-200 bg-white p-2 shadow-xl">
+          <button ref={opcionRef} type="button" role="menuitem" onClick={() => {
+            setAbierto(false);
+            if (window.confirm("La corrección quedará registrada en la auditoría inmutable de la ficha. ¿Continuar?")) onCorregir();
+          }} className="w-full rounded px-2 py-1.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50">
+            Corregir registro
+          </button>
+          <p className="border-t border-slate-100 px-2 pt-2 text-[10px] leading-relaxed text-slate-500">La corrección conserva el registro original y queda en la auditoría de la ficha.</p>
+      </div>
+    </div>
+  );
+}
+
 export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIniciales, persistenciaDisponible }: FootModelViewerProps) {
   const contenedorRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
   const controlesRef = useRef<OrbitControls | null>(null);
   const punteroInicialRef = useRef<{ x: number; y: number } | null>(null);
   const atencionesRef = useRef(atenciones);
@@ -75,10 +141,13 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
   const persistenciaRef = useRef(persistenciaDisponible);
   const vistaActualRef = useRef<VistaPies>("ambos");
   const encuadrarRef = useRef<(vista: VistaPies) => void>(() => { });
+  const seleccionarHallazgoRef = useRef<(id: string) => void>(() => {});
   const [estado, setEstado] = useState("Cargando modelo anatómico...");
   const [error, setError] = useState(false);
   const [modelosListos, setModelosListos] = useState(false);
   const [vista, setVista] = useState<VistaPies>("ambos");
+  const [hallazgoSeleccionadoId, setHallazgoSeleccionadoId] = useState<string | null>(null);
+  const [hallazgosResaltados, setHallazgosResaltados] = useState<Set<string>>(new Set());
   const [puntoSeleccionado, setPuntoSeleccionado] = useState<PuntoClinico | null>(null);
   const [afeccion, setAfeccion] = useState("");
   const [dolor, setDolor] = useState(0);
@@ -88,16 +157,33 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
   const correccionGuardada = Boolean(hallazgoEnEdicion && estadoGuardar.hallazgo && estadoGuardar.seleccionId === puntoSeleccionado?.seleccionId);
   const correccionActiva = Boolean(hallazgoEnEdicion && !correccionGuardada);
   const respuestaDelPuntoActual = estadoGuardar.seleccionId === puntoSeleccionado?.seleccionId;
-  const formularioVisible = Boolean(puntoSeleccionado && (
+  const formularioVisible = Boolean(persistenciaDisponible && atenciones.length && puntoSeleccionado && (
     (respuestaDelPuntoActual && estadoGuardar.error)
     || (!respuestaDelPuntoActual && (!correccionActiva || puntoSeleccionado.seleccionId !== hallazgoEnEdicion?.id))
   ));
-  const hallazgos = estadoGuardar.hallazgo
+  const hallazgos = useMemo(() => estadoGuardar.hallazgo
     ? [...hallazgosIniciales.filter((hallazgo) => hallazgo.id !== estadoGuardar.hallazgo?.id), estadoGuardar.hallazgo].sort((a, b) => a.created_at.localeCompare(b.created_at))
-    : hallazgosIniciales;
-  const hallazgosActivos = hallazgosVigentes(hallazgos);
-  const idsReemplazados = new Set(hallazgos.map((hallazgo) => hallazgo.corrige_hallazgo_id).filter((id): id is string => id !== null));
-  const atencionesSinHallazgos = atenciones.filter((atencion) => !hallazgosActivos.some((hallazgo) => hallazgo.atencion_id === atencion.id));
+    : hallazgosIniciales, [hallazgosIniciales, estadoGuardar.hallazgo]);
+  const hallazgosActivos = useMemo(() => hallazgosVigentes(hallazgos), [hallazgos]);
+  const hallazgosLineaTiempo = useMemo(() => hallazgosActivos.filter((hallazgo) => vista === "ambos" || hallazgo.lado_pie === vista), [hallazgosActivos, vista]);
+
+  useEffect(() => {
+    vistaActualRef.current = vista;
+    encuadrarRef.current(vista);
+    for (const hallazgo of hallazgos) {
+      const marcador = marcadoresRef.current.get(hallazgo.id);
+      if (!marcador) continue;
+      marcador.visible = vista === "ambos" || hallazgo.lado_pie === vista;
+      marcador.scale.setScalar(hallazgo.id === hallazgoSeleccionadoId || hallazgosResaltados.has(hallazgo.id) ? 1.4 : 1);
+    }
+  }, [vista, hallazgos, hallazgoSeleccionadoId, hallazgosResaltados]);
+
+  useEffect(() => {
+    const dialogo = dialogRef.current;
+    if (!dialogo) return;
+    if (formularioVisible && !dialogo.open) dialogo.showModal();
+    if (!formularioVisible && dialogo.open) dialogo.close();
+  }, [formularioVisible]);
 
   useEffect(() => {
     hallazgosRef.current = hallazgosActivos;
@@ -106,6 +192,24 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
   useEffect(() => {
     hallazgoEnEdicionRef.current = correccionGuardada ? null : hallazgoEnEdicion;
   }, [hallazgoEnEdicion, correccionGuardada]);
+
+  const seleccionarHallazgo = useCallback((id: string) => {
+    const hallazgo = hallazgosActivos.find((item) => item.id === id);
+    if (!hallazgo) return;
+    if (vista !== "ambos" && vista !== hallazgo.lado_pie) setVista(hallazgo.lado_pie);
+    setHallazgoSeleccionadoId(id);
+    setHallazgosResaltados(new Set([id]));
+    window.requestAnimationFrame(() => document.getElementById(`hallazgo-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" }));
+  }, [hallazgosActivos, vista]);
+  useEffect(() => {
+    seleccionarHallazgoRef.current = seleccionarHallazgo;
+  }, [seleccionarHallazgo]);
+
+  const resaltarAtencion = (hallazgoIds: string[]) => {
+    setVista("ambos");
+    setHallazgoSeleccionadoId(null);
+    setHallazgosResaltados(new Set(hallazgoIds));
+  };
 
   useEffect(() => {
     const contenedor = contenedorRef.current;
@@ -125,10 +229,14 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
       renderizador = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     } catch {
       const cuadroError = window.requestAnimationFrame(() => {
+        if (desmontado) return;
         setError(true);
         setEstado("Aceleración de hardware (WebGL) no disponible. El mapa 3D está deshabilitado.");
       });
-      return () => window.cancelAnimationFrame(cuadroError);
+      return () => {
+        desmontado = true;
+        window.cancelAnimationFrame(cuadroError);
+      };
     }
     renderizador.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderizador.outputColorSpace = THREE.SRGBColorSpace;
@@ -211,8 +319,17 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
       );
       const raycaster = new THREE.Raycaster();
       raycaster.setFromCamera(puntero, camara);
+      const marcadorInterseccion = raycaster.intersectObjects([...marcadores.values()].filter((marcador) => marcador.visible), true)[0];
+      if (marcadorInterseccion) {
+        let marcador: THREE.Object3D = marcadorInterseccion.object;
+        while (marcador.parent && !marcador.userData.hallazgoId) marcador = marcador.parent;
+        const hallazgoId = marcador.userData.hallazgoId;
+        if (typeof hallazgoId === "string") seleccionarHallazgoRef.current(hallazgoId);
+        return;
+      }
       const interseccion = raycaster.intersectObjects([modelos.izquierdo, modelos.derecho], true)[0];
       if (!interseccion?.face) return;
+      if (!hallazgoEnEdicionRef.current && (!persistenciaRef.current || !atencionesRef.current.length)) return;
 
       let raiz: THREE.Object3D = interseccion.object;
       while (raiz.parent && raiz.parent !== escena) raiz = raiz.parent;
@@ -260,7 +377,9 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
       });
 
       if (!hallazgoEnEdicionRef.current) {
-        if (!persistenciaRef.current || !atencionesRef.current.length) return;
+        setHallazgoEnEdicion(null);
+        setHallazgoSeleccionadoId(null);
+        setHallazgosResaltados(new Set());
         setAfeccion("");
         setDolor(0);
         return;
@@ -337,6 +456,8 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
           }
           const normalGlobal = normalHallazgo.transformDirection(raizHallazgo.matrixWorld);
           const marcador = crearMarcador(colorDolor(hallazgo.intensidad_dolor));
+          marcador.userData.hallazgoId = hallazgo.id;
+          marcador.visible = vistaActualRef.current === "ambos" || hallazgo.lado_pie === vistaActualRef.current;
           marcador.position.copy(raizHallazgo.localToWorld(puntoLocal)).addScaledVector(normalGlobal, 0.018);
           marcador.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normalGlobal);
           escena.add(marcador);
@@ -412,19 +533,25 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
       if (marcadorExistente) {
         marcadorExistente.position.copy(raizHallazgo.localToWorld(puntoLocal)).addScaledVector(normalGlobal, 0.018);
         marcadorExistente.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normalGlobal);
+        marcadorExistente.visible = vista === "ambos" || hallazgo.lado_pie === vista;
+        marcadorExistente.scale.setScalar(hallazgo.id === hallazgoSeleccionadoId || hallazgosResaltados.has(hallazgo.id) ? 1.4 : 1);
         marcadorExistente.traverse((objeto) => {
           if (objeto instanceof THREE.Mesh) objeto.material.color.setHex(colorDolor(hallazgo.intensidad_dolor));
         });
         continue;
       }
+      if (marcadorPendienteRef.current && estadoGuardar.hallazgo?.id === hallazgo.id) continue;
 
       const marcador = crearMarcador(colorDolor(hallazgo.intensidad_dolor));
+      marcador.userData.hallazgoId = hallazgo.id;
+      marcador.visible = vistaActualRef.current === "ambos" || hallazgo.lado_pie === vistaActualRef.current;
       marcador.position.copy(raizHallazgo.localToWorld(puntoLocal)).addScaledVector(normalGlobal, 0.018);
       marcador.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normalGlobal);
+      marcador.scale.setScalar(hallazgo.id === hallazgoSeleccionadoId || hallazgosResaltados.has(hallazgo.id) ? 1.4 : 1);
       escenas.add(marcador);
       marcadoresRef.current.set(hallazgo.id, marcador);
     }
-  }, [hallazgos]);
+  }, [hallazgos, vista, hallazgoSeleccionadoId, hallazgosResaltados, estadoGuardar.hallazgo]);
 
   useEffect(() => {
     const hallazgo = estadoGuardar.hallazgo;
@@ -432,6 +559,8 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
 
     const marcador = marcadorPendienteRef.current;
     if (marcador) {
+      marcador.userData.hallazgoId = hallazgo.id;
+      marcador.visible = vistaActualRef.current === "ambos" || hallazgo.lado_pie === vistaActualRef.current;
       marcador.traverse((objeto) => {
         if (objeto instanceof THREE.Mesh) objeto.material.color.setHex(colorDolor(hallazgo.intensidad_dolor));
       });
@@ -456,15 +585,12 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
     setHallazgoEnEdicion(null);
   };
 
-  const cancelarEdicion = () => {
-    setHallazgoEnEdicion(null);
-    setPuntoSeleccionado(null);
-  };
-
   const iniciarEdicion = (hallazgo: HallazgoClinico) => {
+    setAfeccion(hallazgo.afeccion);
+    setDolor(hallazgo.intensidad_dolor);
     setHallazgoEnEdicion(hallazgo);
     setPuntoSeleccionado({
-      seleccionId: hallazgo.id,
+      seleccionId: crypto.randomUUID(),
       lado: hallazgo.lado_pie,
       posicion: [hallazgo.coordenada_x, hallazgo.coordenada_y, hallazgo.coordenada_z],
       normal: [hallazgo.normal_x, hallazgo.normal_y, hallazgo.normal_z],
@@ -472,11 +598,12 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
   };
 
   return (
+    <div className="grid gap-5">
     <section aria-labelledby="visor-heading" className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
         <div>
           <h2 id="visor-heading" className="font-semibold text-slate-900">Mapa clínico del pie</h2>
-          <p className="mt-1 text-xs text-slate-500">Vista comparativa anatómica</p>
+          <p className="mt-1 text-xs text-slate-500">El filtro también aplica a la evolución clínica</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div role="group" aria-label="Seleccionar pie" className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
@@ -487,35 +614,41 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
               </button>
             ))}
           </div>
-          <button type="button" onClick={() => controlesRef.current?.reset()} disabled={!modelosListos || error} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 hover:border-teal-700 hover:text-teal-800 disabled:cursor-not-allowed disabled:opacity-50">
+          <button type="button" aria-label="Restablecer vista" title="Restablecer vista" onClick={() => controlesRef.current?.reset()} disabled={!modelosListos || error} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 hover:border-teal-700 hover:text-teal-800 disabled:cursor-not-allowed disabled:opacity-50">
             Restablecer
           </button>
+          <ClickTooltip ariaLabel="Ayuda del visor" content="Arrastra para rotar, usa la rueda o pellizca para acercar y toca la piel para registrar un hallazgo. Selecciona un punto o una fila de la evolución para vincularlos.">
+            <span aria-hidden="true" className="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 text-sm font-semibold text-slate-600">?</span>
+          </ClickTooltip>
         </div>
       </div>
       <div className="relative h-[320px] bg-slate-100 sm:h-[420px]">
         <div ref={contenedorRef} className="h-full w-full [&>canvas]:block [&>canvas]:h-full [&>canvas]:w-full" />
-        <p role={error ? "alert" : "status"} className={`absolute bottom-3 left-3 rounded-md border px-2.5 py-1.5 text-xs shadow-sm ${error ? "border-red-200 bg-red-50 text-red-800" : "border-slate-200 bg-white/95 text-slate-600"}`}>
-          {estado}
-        </p>
+        {(!modelosListos || error) && <p role={error ? "alert" : "status"} className={`absolute bottom-3 left-3 rounded-md border px-2.5 py-1.5 text-xs shadow-sm ${error ? "border-red-200 bg-red-50 text-red-800" : "border-slate-200 bg-white/95 text-slate-600"}`}>{estado}</p>}
+        {modelosListos && !error && atenciones.length > 0 && <p className="absolute left-3 top-3 rounded-full border border-slate-700 bg-slate-900/85 px-3 py-1.5 text-xs text-white">Toca el pie para registrar un hallazgo</p>}
       </div>
       <div className="grid gap-4 border-t border-slate-200 p-4 sm:p-5">
         {persistenciaDisponible ? (
-          atenciones.length ? <p className="text-xs text-slate-500">Haz clic en el pie para marcar una afección y asociarla a una atención. Los puntos quedan en su historial clínico.</p>
-            : <p className="text-sm text-slate-600">Registra una atención clínica antes de ubicar hallazgos en el mapa.</p>
+          !atenciones.length && <p className="text-sm text-slate-600">Registra una atención clínica antes de ubicar hallazgos en el mapa.</p>
         ) : <p role="alert" className="text-sm text-amber-800">No se pudo cargar el historial de marcas. Verifica que la migración del visor esté aplicada.</p>}
-        {correccionActiva && hallazgoEnEdicion && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-4 text-sm text-slate-700">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="font-semibold text-amber-900">Corrección de marca</p>
-                <p className="mt-1 text-sm text-slate-600">La marca original se conserva. Haz clic en el pie para elegir la nueva ubicación de la corrección.</p>
-              </div>
-              <button type="button" onClick={cancelarEdicion} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Cancelar</button>
-            </div>
-          </div>
-        )}
+        <dialog
+          ref={dialogRef}
+          aria-labelledby="hallazgo-dialog-title"
+          onCancel={(evento) => {
+            evento.preventDefault();
+            cancelarBorrador();
+          }}
+          className="fixed inset-0 m-auto max-h-[90dvh] w-[min(42rem,calc(100%-2rem))] overflow-y-auto rounded-xl border border-slate-200 bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-950/50"
+        >
         {formularioVisible && puntoSeleccionado && (
-          <form className="grid gap-4 rounded-lg border border-teal-200 bg-teal-50/60 p-4 lg:grid-cols-[minmax(180px,0.8fr)_minmax(0,1fr)_minmax(180px,0.7fr)_auto] lg:items-end" action={formAction}>
+          <form className="grid gap-4 p-5 sm:p-6" action={formAction}>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 id="hallazgo-dialog-title" className="font-semibold text-slate-900">{correccionActiva ? "Corregir registro" : "Nuevo hallazgo"} · pie {puntoSeleccionado.lado}</h3>
+                <p className="mt-1 text-sm text-slate-500">{correccionActiva ? "La corrección se añadirá al historial de auditoría." : "Completa los datos del hallazgo marcado."}</p>
+              </div>
+              <button type="button" onClick={cancelarBorrador} aria-label="Cerrar formulario" className="rounded-md px-2 py-1 text-slate-500 hover:bg-slate-100">×</button>
+            </div>
             <input type="hidden" name="seleccionId" value={puntoSeleccionado.seleccionId} />
             <input type="hidden" name="pacienteId" value={pacienteId} />
             <input type="hidden" name="corrigeHallazgoId" value={correccionActiva ? hallazgoEnEdicion?.id ?? "" : ""} />
@@ -550,7 +683,7 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
             </label>
             <label className="grid gap-1.5 text-sm font-medium text-slate-700" htmlFor="dolor">
               Intensidad de dolor <output className="font-semibold text-teal-800">{dolor}/10</output>
-              <input id="dolor" name="intensidadDolor" type="range" min="0" max="10" step="1" value={dolor} onChange={(evento) => setDolor(Number(evento.target.value))} className="h-10 accent-teal-700" />
+              <input id="dolor" name="intensidadDolor" type="range" min="0" max="10" step="1" value={dolor} onChange={(evento) => setDolor(Number(evento.target.value))} aria-valuetext={`${dolor} de 10`} className="h-10 accent-teal-700" />
             </label>
             <div className="flex gap-2 sm:justify-end">
               <button type="button" onClick={cancelarBorrador} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Cancelar</button>
@@ -559,47 +692,88 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
             {estadoGuardar.error && estadoGuardar.seleccionId === puntoSeleccionado.seleccionId && <p role="alert" className="text-sm text-red-700 lg:col-span-4">{estadoGuardar.error}</p>}
           </form>
         )}
-        {hallazgos.length > 0 && (
-          <div className="grid gap-2">
-            <h3 className="text-sm font-semibold text-slate-800">Evolución marcada en el mapa</h3>
-            <ul className="grid gap-2 sm:grid-cols-2">
-              {hallazgos.map((hallazgo) => {
-                const atencion = atenciones.find((visita) => visita.id === hallazgo.atencion_id);
-                return (
-                  <li key={hallazgo.id} className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm">
-                    <div className="min-w-0">
-                      <p className="truncate font-medium text-slate-800">{hallazgo.afeccion}</p>
-                      <p className="mt-0.5 truncate text-xs text-slate-500">{atencion ? `${fechaVisita(atencion.created_at)} · ${atencion.diagnostico_cie10 || "Atención clínica"}` : "Atención clínica"}</p>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <span className="text-xs text-slate-600">{hallazgo.lado_pie} · Dolor {hallazgo.intensidad_dolor}/10</span>
-                      {idsReemplazados.has(hallazgo.id)
-                        ? <span className="text-xs text-slate-500">Reemplazada</span>
-                        : <button type="button" onClick={() => iniciarEdicion(hallazgo)} className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-700 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-800">Corregir</button>}
-                    </div>
-                    {hallazgo.modelo_version !== MODELO_PIE_VERSION && <span className="shrink-0 text-xs text-amber-800">Modelo anterior</span>}
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        )}
-        {atencionesSinHallazgos.length > 0 && (
-          <p className="text-xs text-slate-500">
-            {atencionesSinHallazgos.length} {atencionesSinHallazgos.length === 1 ? "atención previa aún no tiene" : "atenciones previas aún no tienen"} ubicaciones anatómicas. Selecciona una al marcar para añadirlas al mapa.
-          </p>
-        )}
+        </dialog>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 px-5 py-3 text-xs text-slate-500">
-        <span>Arrastra para rotar · rueda o pellizca para acercar · clic en el pie para marcar</span>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1" aria-label="Leyenda de intensidad de dolor">
           <span className="font-medium text-slate-600">Dolor:</span>
-          <span className="inline-flex items-center gap-1"><i aria-hidden="true" className="h-2 w-2 rounded-full bg-teal-700" />0–3</span>
-          <span className="inline-flex items-center gap-1"><i aria-hidden="true" className="h-2 w-2 rounded-full bg-amber-600" />4–6</span>
-          <span className="inline-flex items-center gap-1"><i aria-hidden="true" className="h-2 w-2 rounded-full bg-red-700" />7–10</span>
-          <span className="ml-1 border-l border-slate-200 pl-3">{vista === "ambos" ? "Vista comparativa" : vista === "izquierdo" ? "Pie izquierdo" : "Pie derecho"}</span>
+          <span className="inline-flex items-center gap-1"><i aria-hidden="true" className="h-2 w-2 rounded-full bg-teal-700" />0–3 leve</span>
+          <span className="inline-flex items-center gap-1"><i aria-hidden="true" className="h-2 w-2 rounded-full bg-amber-600" />4–6 moderado</span>
+          <span className="inline-flex items-center gap-1"><i aria-hidden="true" className="h-2 w-2 rounded-full bg-red-700" />7–10 severo</span>
         </div>
+        <span>{vista === "ambos" ? "Vista comparativa" : `Pie ${vista}`}</span>
       </div>
     </section>
+      <section aria-labelledby="evolucion-heading" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <div className="border-b border-slate-100 pb-4">
+          <h2 id="evolucion-heading" className="font-semibold text-slate-900">Evolución clínica</h2>
+          <p className="mt-1 text-xs text-slate-500">El filtro de pie también se aplica a los hallazgos. Selecciona uno para localizarlo en el mapa.</p>
+        </div>
+        {hallazgosLineaTiempo.length === 0 && (
+          <p className="mt-4 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
+            No hay hallazgos registrados en el pie {vista === "ambos" ? "seleccionado" : vista}. {atenciones.length ? "Puedes marcar uno directamente en el mapa." : "Registra una atención clínica antes de añadir hallazgos."}
+          </p>
+        )}
+        {atenciones.length ? (
+          <ol className="relative mt-5 grid gap-4 pl-6 before:absolute before:bottom-4 before:left-[7px] before:top-3 before:w-px before:bg-slate-200">
+            {atenciones.map((atencion) => {
+              const hallazgosVisita = hallazgosActivos.filter((hallazgo) => hallazgo.atencion_id === atencion.id);
+              const hallazgosVisibles = hallazgosVisita.filter((hallazgo) => vista === "ambos" || hallazgo.lado_pie === vista);
+              return (
+                <li key={atencion.id} className="relative min-w-0">
+                  <span aria-hidden="true" className="absolute -left-6 top-4 h-3.5 w-3.5 rounded-full border-2 border-teal-700 bg-white ring-4 ring-white" />
+                  <article className="rounded-xl border border-slate-200 bg-white p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-medium text-slate-900">{atencion.diagnostico_cie10 || "Atención clínica"}</p>
+                        <p className="mt-1 text-xs text-slate-500">{fechaAtencion(atencion.created_at)}{atencion.profesional ? ` · ${atencion.profesional}` : ""}</p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {atencion.nivel_riesgo_iwgdf && <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-600">IWGDF: {atencion.nivel_riesgo_iwgdf.replaceAll("_", " ")}</span>}
+                        {atencion.requiere_derivacion && <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800">Requiere derivación</span>}
+                      </div>
+                    </div>
+                    {atencion.observaciones && <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-600">{atencion.observaciones}</p>}
+                    {hallazgosVisita.length > 0 && (
+                      <button type="button" onClick={() => resaltarAtencion(hallazgosVisita.map((hallazgo) => hallazgo.id))}
+                        className="mt-3 rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:border-teal-700 hover:text-teal-800">
+                        Ver hallazgos en el pie ({hallazgosVisita.length})
+                      </button>
+                    )}
+                    {hallazgosVisita.length > hallazgosVisibles.length && hallazgosVisibles.length === 0 && (
+                      <p className="mt-3 text-xs text-slate-500">Esta atención tiene hallazgos en el otro pie; usa “Ver hallazgos en el pie” para resaltarlos.</p>
+                    )}
+                    {hallazgosVisibles.length > 0 && (
+                      <ul className="mt-3 grid gap-2">
+                        {hallazgosVisibles.map((hallazgo) => (
+                          <li key={hallazgo.id} className="flex items-start gap-2">
+                            <button
+                              id={`hallazgo-${hallazgo.id}`}
+                              type="button"
+                              aria-pressed={hallazgoSeleccionadoId === hallazgo.id}
+                              onClick={() => seleccionarHallazgo(hallazgo.id)}
+                              className={`min-w-0 flex-1 rounded-lg border px-3 py-2.5 text-left transition-colors focus-visible:outline-2 focus-visible:outline-teal-700 ${hallazgoSeleccionadoId === hallazgo.id ? "border-teal-600 bg-teal-50" : "border-slate-200 hover:border-teal-300 hover:bg-slate-50"}`}
+                            >
+                              <span className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="inline-flex items-center gap-2 font-medium text-slate-800">
+                                  <i aria-hidden="true" className={`h-2.5 w-2.5 rounded-full ${hallazgo.intensidad_dolor >= 7 ? "bg-red-600" : hallazgo.intensidad_dolor >= 4 ? "bg-amber-500" : "bg-teal-700"}`} />
+                                  {hallazgo.afeccion}
+                                </span>
+                                <span className="text-xs text-slate-500">Pie {hallazgo.lado_pie} · Dolor {hallazgo.intensidad_dolor}/10</span>
+                              </span>
+                            </button>
+                            <MenuHallazgo onCorregir={() => iniciarEdicion(hallazgo)} />
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </article>
+                </li>
+              );
+            })}
+          </ol>
+        ) : hallazgosLineaTiempo.length > 0 ? <p className="mt-4 text-sm text-slate-500">No hay atenciones disponibles para mostrar la evolución.</p> : null}
+      </section>
+    </div>
   );
 }
