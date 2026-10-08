@@ -74,7 +74,7 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
   const hallazgosRef = useRef(hallazgosVigentes(hallazgosIniciales));
   const persistenciaRef = useRef(persistenciaDisponible);
   const vistaActualRef = useRef<VistaPies>("ambos");
-  const encuadrarRef = useRef<(vista: VistaPies) => void>(() => {});
+  const encuadrarRef = useRef<(vista: VistaPies) => void>(() => { });
   const [estado, setEstado] = useState("Cargando modelo anatómico...");
   const [error, setError] = useState(false);
   const [modelosListos, setModelosListos] = useState(false);
@@ -112,6 +112,19 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
     if (!contenedor) return;
     const marcadores = marcadoresRef.current;
 
+    try {
+      const canvas = document.createElement("canvas");
+      if (!window.WebGLRenderingContext || (!canvas.getContext("webgl") && !canvas.getContext("webgl2") && !canvas.getContext("experimental-webgl"))) {
+        setError(true);
+        setEstado("Aceleración de hardware (WebGL) no disponible. El mapa 3D está deshabilitado.");
+        return;
+      }
+    } catch (e) {
+      setError(true);
+      setEstado("Aceleración de hardware (WebGL) no disponible. El mapa 3D está deshabilitado.");
+      return;
+    }
+
     let desmontado = false;
     let modeloCargado: THREE.Object3D | null = null;
     let cuadroAnimacion = 0;
@@ -119,7 +132,14 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
     escena.background = new THREE.Color("#f1f5f9");
 
     const camara = new THREE.PerspectiveCamera(35, 1, 0.01, 1000);
-    const renderizador = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    let renderizador: THREE.WebGLRenderer;
+    try {
+      renderizador = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    } catch (e) {
+      setError(true);
+      setEstado("Aceleración de hardware (WebGL) no disponible. El mapa 3D está deshabilitado.");
+      return;
+    }
     renderizador.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderizador.outputColorSpace = THREE.SRGBColorSpace;
     renderizador.toneMapping = THREE.ACESFilmicToneMapping;
@@ -362,7 +382,7 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
       renderizador.domElement.removeEventListener("click", seleccionarPunto);
       controlesRef.current = null;
       modelosRef.current = null;
-      encuadrarRef.current = () => {};
+      encuadrarRef.current = () => { };
       setModelosListos(false);
       if (marcadorPendienteRef.current) liberarModelo(marcadorPendienteRef.current);
       marcadores.forEach(liberarModelo);
@@ -556,19 +576,19 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
               {hallazgos.map((hallazgo) => {
                 const atencion = atenciones.find((visita) => visita.id === hallazgo.atencion_id);
                 return (
-                <li key={hallazgo.id} className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm">
-                  <div className="min-w-0">
-                    <p className="truncate font-medium text-slate-800">{hallazgo.afeccion}</p>
-                    <p className="mt-0.5 truncate text-xs text-slate-500">{atencion ? `${fechaVisita(atencion.created_at)} · ${atencion.diagnostico_cie10 || "Atención clínica"}` : "Atención clínica"}</p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <span className="text-xs text-slate-600">{hallazgo.lado_pie} · Dolor {hallazgo.intensidad_dolor}/10</span>
-                    {idsReemplazados.has(hallazgo.id)
-                      ? <span className="text-xs text-slate-500">Reemplazada</span>
-                      : <button type="button" onClick={() => iniciarEdicion(hallazgo)} className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-700 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-800">Corregir</button>}
-                  </div>
-                  {hallazgo.modelo_version !== MODELO_PIE_VERSION && <span className="shrink-0 text-xs text-amber-800">Modelo anterior</span>}
-                </li>
+                  <li key={hallazgo.id} className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-slate-800">{hallazgo.afeccion}</p>
+                      <p className="mt-0.5 truncate text-xs text-slate-500">{atencion ? `${fechaVisita(atencion.created_at)} · ${atencion.diagnostico_cie10 || "Atención clínica"}` : "Atención clínica"}</p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <span className="text-xs text-slate-600">{hallazgo.lado_pie} · Dolor {hallazgo.intensidad_dolor}/10</span>
+                      {idsReemplazados.has(hallazgo.id)
+                        ? <span className="text-xs text-slate-500">Reemplazada</span>
+                        : <button type="button" onClick={() => iniciarEdicion(hallazgo)} className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-700 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-800">Corregir</button>}
+                    </div>
+                    {hallazgo.modelo_version !== MODELO_PIE_VERSION && <span className="shrink-0 text-xs text-amber-800">Modelo anterior</span>}
+                  </li>
                 );
               })}
             </ul>
