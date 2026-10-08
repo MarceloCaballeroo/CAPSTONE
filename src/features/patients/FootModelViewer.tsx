@@ -115,11 +115,28 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
     let desmontado = false;
     let modeloCargado: THREE.Object3D | null = null;
     let cuadroAnimacion = 0;
+    const informarErrorWebGL = () => {
+      const cuadroError = window.requestAnimationFrame(() => {
+        if (desmontado) return;
+        setError(true);
+        setEstado("Aceleración de hardware (WebGL) no disponible. El mapa 3D está deshabilitado.");
+      });
+      return () => {
+        desmontado = true;
+        window.cancelAnimationFrame(cuadroError);
+      };
+    };
+
     const escena = new THREE.Scene();
     escena.background = new THREE.Color("#f1f5f9");
 
     const camara = new THREE.PerspectiveCamera(35, 1, 0.01, 1000);
-    const renderizador = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    let renderizador: THREE.WebGLRenderer;
+    try {
+      renderizador = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    } catch {
+      return informarErrorWebGL();
+    }
     renderizador.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderizador.outputColorSpace = THREE.SRGBColorSpace;
     renderizador.toneMapping = THREE.ACESFilmicToneMapping;
