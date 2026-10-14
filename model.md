@@ -76,13 +76,13 @@
 | `id` | `uuid` | Primary |
 | `atencion_id` | `uuid` | References `atencion`, no delete |
 | `lado_pie` | `text` | `izquierdo` / `derecho` |
-| `coordenada_x` | `float8` | Local coordinates on model `foot-v1` |
-| `coordenada_y` | `float8` | Local coordinates on model `foot-v1` |
-| `coordenada_z` | `float8` | Local coordinates on model `foot-v1` |
+| `coordenada_x` | `float8` | Local coordinates on the model named in `modelo_version` |
+| `coordenada_y` | `float8` | Local coordinates on the model named in `modelo_version` |
+| `coordenada_z` | `float8` | Local coordinates on the model named in `modelo_version` |
 | `normal_x` | `float8` | Surface normal X |
 | `normal_y` | `float8` | Surface normal Y |
 | `normal_z` | `float8` | Surface normal Z |
-| `modelo_version` | `text` | Defaults to `foot-v1` |
+| `modelo_version` | `text` | Defaults to `foot-v1`; the app writes `foot-v2` (cm, see `scripts/build_foot_v2.py`) |
 | `afeccion` | `text` | 1-120 characters |
 | `intensidad_dolor` | `int2` | 0-10 |
 | `creado_por` | `uuid` | References `usuario` |

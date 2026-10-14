@@ -6,11 +6,11 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { ClickTooltip } from "@/components/common/ClickTooltip";
 import { guardarHallazgoClinicoAction } from "@/app/actions/hallazgos";
-import type { AtencionMarcable, HallazgoClinico, LadoPie } from "@/lib/types/hallazgos";
-import { hallazgosVigentes, MODELO_PIE_VERSION } from "@/lib/types/hallazgos";
+import type { AtencionMarcable, EstadoGuardarHallazgo, HallazgoClinico, LadoPie } from "@/lib/types/hallazgos";
+import { hallazgosVigentes, MODELO_PIE_V1, MODELO_PIE_VERSION, nombreZona, regionV1, zonaHallazgo } from "@/lib/types/hallazgos";
 
 export type VistaPies = "ambos" | "izquierdo" | "derecho";
-type PuntoClinico = { seleccionId: string; lado: LadoPie; posicion: [number, number, number]; normal: [number, number, number] };
+type PuntoClinico = { seleccionId: string; lado: LadoPie; posicion: [number, number, number]; normal: [number, number, number]; region: string };
 
 type ParejaModelos = {
   izquierdo: THREE.Object3D;
@@ -65,6 +65,73 @@ function crearMarcador(color: number): THREE.Group {
   );
   marcador.add(punto, anillo);
   return marcador;
+}
+
+// Vértices de foot-v2 en el marco local del pie izquierdo (sin espejar), con la región pintada en el modelo.
+type Superficie = { posiciones: THREE.Vector3[]; normales: THREE.Vector3[]; regiones: string[] };
+type Ubicacion = { posicion: THREE.Vector3; normal: THREE.Vector3; region: string };
+
+function regionDeMalla(objeto: THREE.Object3D): string {
+  const material = (objeto as THREE.Mesh).material;
+  return (Array.isArray(material) ? material[0] : material).name.replace(/^zona:/, "");
+}
+
+function leerSuperficie(raiz: THREE.Object3D): Superficie {
+  const superficie: Superficie = { posiciones: [], normales: [], regiones: [] };
+  const inversa = raiz.matrixWorld.clone().invert();
+  raiz.traverse((objeto) => {
+    if (!(objeto instanceof THREE.Mesh)) return;
+    const aLocal = inversa.clone().multiply(objeto.matrixWorld);
+    const { position, normal } = objeto.geometry.attributes;
+    const region = regionDeMalla(objeto);
+    for (let i = 0; i < position.count; i++) {
+      superficie.posiciones.push(new THREE.Vector3().fromBufferAttribute(position, i).applyMatrix4(aLocal));
+      superficie.normales.push(new THREE.Vector3().fromBufferAttribute(normal, i).transformDirection(aLocal));
+      superficie.regiones.push(region);
+    }
+  });
+  return superficie;
+}
+
+// Ubicación de un hallazgo guardado en el marco local de foot-v2 (las coordenadas del pie izquierdo se guardan con X negada).
+// ponytail: foot-v1 se traslada escalando por el largo del pie (talón→hallux 22,25 u → 24,04 cm) y tomando el vértice
+// más cercano con normal compatible dentro de su misma región v1, O(n) por hallazgo; la zona mostrada sigue siendo la de v1.
+function ubicarHallazgo(hallazgo: HallazgoClinico, superficie: Superficie): Ubicacion | null {
+  if (hallazgo.modelo_version !== MODELO_PIE_VERSION && hallazgo.modelo_version !== MODELO_PIE_V1) return null;
+  const posicion = new THREE.Vector3(hallazgo.coordenada_x, hallazgo.coordenada_y, hallazgo.coordenada_z);
+  const normal = new THREE.Vector3(hallazgo.normal_x, hallazgo.normal_y, hallazgo.normal_z);
+  if (hallazgo.lado_pie === "izquierdo") {
+    posicion.x *= -1;
+    normal.x *= -1;
+  }
+  const esV1 = hallazgo.modelo_version === MODELO_PIE_V1;
+  const objetivo = esV1
+    ? new THREE.Vector3((posicion.x - 0.021) * 1.0801 + 0.295, (posicion.y - 0.052) * 1.0801 + 0.099, (posicion.z + 8.955) * 1.0801 + 0.186)
+    : posicion;
+  const regionOrigen = esV1
+    ? regionV1(hallazgo.lado_pie, [hallazgo.coordenada_x, hallazgo.coordenada_y, hallazgo.coordenada_z], [hallazgo.normal_x, hallazgo.normal_y, hallazgo.normal_z])
+    : null;
+  const restringir = regionOrigen !== null && superficie.regiones.includes(regionOrigen);
+  let indice = 0;
+  let mejor = Infinity;
+  superficie.posiciones.forEach((punto, i) => {
+    if (restringir && superficie.regiones[i] !== regionOrigen) return;
+    // Penaliza normales distintas (4 cm² si son perpendiculares) para no saltar a otra cara del pie.
+    const costo = punto.distanceToSquared(objetivo) + 4 * (1 - superficie.normales[i].dot(normal));
+    if (costo < mejor) {
+      mejor = costo;
+      indice = i;
+    }
+  });
+  return esV1
+    ? { posicion: superficie.posiciones[indice].clone(), normal: superficie.normales[indice].clone(), region: superficie.regiones[indice] }
+    : { posicion, normal, region: superficie.regiones[indice] };
+}
+
+function colocarMarcador(marcador: THREE.Object3D, raiz: THREE.Object3D, ubicacion: Ubicacion) {
+  const normalGlobal = ubicacion.normal.clone().transformDirection(raiz.matrixWorld);
+  marcador.position.copy(raiz.localToWorld(ubicacion.posicion.clone())).addScaledVector(normalGlobal, 0.018);
+  marcador.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normalGlobal);
 }
 
 function fechaVisita(fecha: string): string {
@@ -151,7 +218,18 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
   const [puntoSeleccionado, setPuntoSeleccionado] = useState<PuntoClinico | null>(null);
   const [afeccion, setAfeccion] = useState("");
   const [dolor, setDolor] = useState(0);
-  const [estadoGuardar, formAction, guardando] = useActionState(guardarHallazgoClinicoAction, {});
+  const superficieRef = useRef<Superficie | null>(null);
+  const [regionesCargadas, setRegionesCargadas] = useState<Record<string, string>>({});
+  // La región del punto tocado viaja en el formulario y se acumula aquí; el servidor no la persiste.
+  const [estadoGuardar, formAction, guardando] = useActionState(
+    async (previo: EstadoGuardarHallazgo, datos: FormData): Promise<EstadoGuardarHallazgo> => {
+      const resultado = await guardarHallazgoClinicoAction(previo, datos);
+      return resultado.hallazgo
+        ? { ...resultado, regiones: { ...previo.regiones, [resultado.hallazgo.id]: String(datos.get("region") ?? "") } }
+        : { ...resultado, regiones: previo.regiones };
+    },
+    {},
+  );
   const [hallazgoEnEdicion, setHallazgoEnEdicion] = useState<HallazgoClinico | null>(null);
   const hallazgoEnEdicionRef = useRef<HallazgoClinico | null>(null);
   const correccionGuardada = Boolean(hallazgoEnEdicion && estadoGuardar.hallazgo && estadoGuardar.seleccionId === puntoSeleccionado?.seleccionId);
@@ -165,6 +243,7 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
     ? [...hallazgosIniciales.filter((hallazgo) => hallazgo.id !== estadoGuardar.hallazgo?.id), estadoGuardar.hallazgo].sort((a, b) => a.created_at.localeCompare(b.created_at))
     : hallazgosIniciales, [hallazgosIniciales, estadoGuardar.hallazgo]);
   const hallazgosActivos = useMemo(() => hallazgosVigentes(hallazgos), [hallazgos]);
+  const regionesV2 = useMemo(() => ({ ...regionesCargadas, ...estadoGuardar.regiones }), [regionesCargadas, estadoGuardar.regiones]);
   const hallazgosLineaTiempo = useMemo(() => hallazgosActivos.filter((hallazgo) => vista === "ambos" || hallazgo.lado_pie === vista), [hallazgosActivos, vista]);
 
   useEffect(() => {
@@ -272,21 +351,23 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
 
       const fovVertical = THREE.MathUtils.degToRad(camara.fov);
       const fovHorizontal = 2 * Math.atan(Math.tan(fovVertical / 2) * camara.aspect);
-      const centroX = vistaSolicitada === "izquierdo" ? -modelos.separacion / 2 : vistaSolicitada === "derecho" ? modelos.separacion / 2 : 0;
+      const centroX = vistaSolicitada === "izquierdo" ? modelos.separacion / 2 : vistaSolicitada === "derecho" ? -modelos.separacion / 2 : 0;
 
       if (vistaSolicitada === "ambos") {
         const anchoVisible = modelos.separacion + modelos.ancho;
         const distanciaVertical = modelos.largo / (2 * Math.tan(fovVertical / 2));
         const distanciaHorizontal = anchoVisible / (2 * Math.tan(fovHorizontal / 2));
         const distancia = Math.max(distanciaVertical, distanciaHorizontal) * 1.4;
-        camara.up.set(0, 0, -1);
+        // Vista dorsal como el paciente mira sus pies: dedos arriba, izquierdo a la izquierda.
+        camara.up.set(0, 0, 1);
         camara.position.set(0, distancia, 0);
       } else {
         const distanciaVertical = modelos.alto / (2 * Math.tan(fovVertical / 2));
         const distanciaHorizontal = modelos.largo / (2 * Math.tan(fovHorizontal / 2));
         const distancia = Math.max(distanciaVertical, distanciaHorizontal) * 1.45;
         camara.up.set(0, 1, 0);
-        camara.position.set(centroX + distancia, distancia * 0.18, 0);
+        // Vista medial en ambos pies (hallux, 1.ª cabeza metatarsiana y arco).
+        camara.position.set(centroX + (vistaSolicitada === "derecho" ? distancia : -distancia), distancia * 0.18, 0);
       }
 
       controles.target.set(centroX, 0, 0);
@@ -327,16 +408,20 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
         if (typeof hallazgoId === "string") seleccionarHallazgoRef.current(hallazgoId);
         return;
       }
-      const interseccion = raycaster.intersectObjects([modelos.izquierdo, modelos.derecho], true)[0];
+      // El raycast de three.js no respeta `visible`: sin filtrar, el pie oculto intercepta el clic.
+      const interseccion = raycaster.intersectObjects([modelos.izquierdo, modelos.derecho].filter((modelo) => modelo.visible), true)[0];
       if (!interseccion?.face) return;
       if (!hallazgoEnEdicionRef.current && (!persistenciaRef.current || !atencionesRef.current.length)) return;
 
+      const region = regionDeMalla(interseccion.object);
       let raiz: THREE.Object3D = interseccion.object;
       while (raiz.parent && raiz.parent !== escena) raiz = raiz.parent;
       const lado: LadoPie = raiz === modelos.izquierdo ? "izquierdo" : "derecho";
       const normal = interseccion.face.normal.clone().applyMatrix3(
         new THREE.Matrix3().getNormalMatrix(interseccion.object.matrixWorld),
       ).normalize();
+      // Material de doble cara y pierna abierta: no registrar la cara interior vista a través de la abertura.
+      if (normal.dot(raycaster.ray.direction) > 0) return;
       const normalLocal = normal.clone().transformDirection(raiz.matrixWorld.clone().invert());
       const posicionMarcador = interseccion.point.clone().addScaledVector(normal, 0.018);
       const marcador = crearMarcador(0xf59e0b);
@@ -365,6 +450,7 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
           lado,
           posicion: [local.x, local.y, local.z],
           normal: [normalLocal.x, normalLocal.y, normalLocal.z],
+          region,
         });
         return;
       }
@@ -374,6 +460,7 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
         lado,
         posicion: [local.x, local.y, local.z],
         normal: [normalLocal.x, normalLocal.y, normalLocal.z],
+        region,
       });
 
       if (!hallazgoEnEdicionRef.current) {
@@ -398,7 +485,7 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
 
     const loader = new GLTFLoader();
     loader.load(
-      "/models/foot.glb",
+      "/models/foot-v2.glb",
       ({ scene: modelo }) => {
         if (desmontado) {
           liberarModelo(modelo);
@@ -419,6 +506,7 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
         }
 
         const escala = 3.5 / dimensionMaxima;
+        // foot-v2.glb es un pie izquierdo; el derecho es su espejo.
         const modeloDerecho = modelo.clone(true);
         const alto = tamano.y * escala;
         const ancho = tamano.x * escala;
@@ -441,28 +529,16 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
 
         escena.add(modelo);
         escena.add(modeloDerecho);
-        modelosRef.current = { izquierdo: modeloDerecho, derecho: modelo, alto, ancho, largo, separacion };
+        modelosRef.current = { izquierdo: modelo, derecho: modeloDerecho, alto, ancho, largo, separacion };
         modelosRef.current.izquierdo.updateMatrixWorld(true);
         modelosRef.current.derecho.updateMatrixWorld(true);
 
-        for (const hallazgo of hallazgosRef.current) {
-          if (hallazgo.modelo_version !== MODELO_PIE_VERSION || marcadoresRef.current.has(hallazgo.id)) continue;
-          const raizHallazgo = hallazgo.lado_pie === "izquierdo" ? modelosRef.current.izquierdo : modelosRef.current.derecho;
-          const puntoLocal = new THREE.Vector3(hallazgo.coordenada_x, hallazgo.coordenada_y, hallazgo.coordenada_z);
-          const normalHallazgo = new THREE.Vector3(hallazgo.normal_x, hallazgo.normal_y, hallazgo.normal_z);
-          if (hallazgo.lado_pie === "izquierdo") {
-            puntoLocal.x *= -1;
-            normalHallazgo.x *= -1;
-          }
-          const normalGlobal = normalHallazgo.transformDirection(raizHallazgo.matrixWorld);
-          const marcador = crearMarcador(colorDolor(hallazgo.intensidad_dolor));
-          marcador.userData.hallazgoId = hallazgo.id;
-          marcador.visible = vistaActualRef.current === "ambos" || hallazgo.lado_pie === vistaActualRef.current;
-          marcador.position.copy(raizHallazgo.localToWorld(puntoLocal)).addScaledVector(normalGlobal, 0.018);
-          marcador.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normalGlobal);
-          escena.add(marcador);
-          marcadoresRef.current.set(hallazgo.id, marcador);
-        }
+        const superficie = leerSuperficie(modelo);
+        superficieRef.current = superficie;
+        setRegionesCargadas(Object.fromEntries(hallazgosRef.current.flatMap((hallazgo) => {
+          const ubicacion = hallazgo.modelo_version === MODELO_PIE_VERSION ? ubicarHallazgo(hallazgo, superficie) : null;
+          return ubicacion ? [[hallazgo.id, ubicacion.region]] : [];
+        })));
 
         setModelosListos(true);
         encuadrar(vistaActualRef.current);
@@ -473,7 +549,7 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
       () => {
         if (desmontado) return;
         setError(true);
-        setEstado("No se pudo cargar Foot.glb.");
+        setEstado("No se pudo cargar el modelo del pie.");
       },
     );
 
@@ -507,7 +583,8 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
 
   useEffect(() => {
     const modeli = modelosRef.current;
-    if (!modeli) return;
+    const superficie = superficieRef.current;
+    if (!modeli || !superficie) return;
 
     const escenas = modeli.izquierdo.parent;
     if (!escenas) return;
@@ -520,19 +597,9 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
     }
 
     for (const hallazgo of hallazgosRef.current) {
-      if (hallazgo.modelo_version !== MODELO_PIE_VERSION) continue;
       const raizHallazgo = hallazgo.lado_pie === "izquierdo" ? modeli.izquierdo : modeli.derecho;
-      const puntoLocal = new THREE.Vector3(hallazgo.coordenada_x, hallazgo.coordenada_y, hallazgo.coordenada_z);
-      const normalHallazgo = new THREE.Vector3(hallazgo.normal_x, hallazgo.normal_y, hallazgo.normal_z);
-      if (hallazgo.lado_pie === "izquierdo") {
-        puntoLocal.x *= -1;
-        normalHallazgo.x *= -1;
-      }
-      const normalGlobal = normalHallazgo.transformDirection(raizHallazgo.matrixWorld);
       const marcadorExistente = marcadoresRef.current.get(hallazgo.id);
       if (marcadorExistente) {
-        marcadorExistente.position.copy(raizHallazgo.localToWorld(puntoLocal)).addScaledVector(normalGlobal, 0.018);
-        marcadorExistente.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normalGlobal);
         marcadorExistente.visible = vista === "ambos" || hallazgo.lado_pie === vista;
         marcadorExistente.scale.setScalar(hallazgo.id === hallazgoSeleccionadoId || hallazgosResaltados.has(hallazgo.id) ? 1.4 : 1);
         marcadorExistente.traverse((objeto) => {
@@ -541,17 +608,18 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
         continue;
       }
       if (marcadorPendienteRef.current && estadoGuardar.hallazgo?.id === hallazgo.id) continue;
+      const ubicacion = ubicarHallazgo(hallazgo, superficie);
+      if (!ubicacion) continue;
 
       const marcador = crearMarcador(colorDolor(hallazgo.intensidad_dolor));
       marcador.userData.hallazgoId = hallazgo.id;
       marcador.visible = vistaActualRef.current === "ambos" || hallazgo.lado_pie === vistaActualRef.current;
-      marcador.position.copy(raizHallazgo.localToWorld(puntoLocal)).addScaledVector(normalGlobal, 0.018);
-      marcador.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normalGlobal);
+      colocarMarcador(marcador, raizHallazgo, ubicacion);
       marcador.scale.setScalar(hallazgo.id === hallazgoSeleccionadoId || hallazgosResaltados.has(hallazgo.id) ? 1.4 : 1);
       escenas.add(marcador);
       marcadoresRef.current.set(hallazgo.id, marcador);
     }
-  }, [hallazgos, vista, hallazgoSeleccionadoId, hallazgosResaltados, estadoGuardar.hallazgo]);
+  }, [hallazgos, vista, hallazgoSeleccionadoId, hallazgosResaltados, estadoGuardar.hallazgo, modelosListos]);
 
   useEffect(() => {
     const hallazgo = estadoGuardar.hallazgo;
@@ -586,14 +654,19 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
   };
 
   const iniciarEdicion = (hallazgo: HallazgoClinico) => {
+    // La corrección se guarda como foot-v2: un hallazgo de v1 se corrige sobre su punto trasladado.
+    const ubicacion = superficieRef.current && ubicarHallazgo(hallazgo, superficieRef.current);
+    if (!ubicacion) return;
+    const signo = hallazgo.lado_pie === "izquierdo" ? -1 : 1;
     setAfeccion(hallazgo.afeccion);
     setDolor(hallazgo.intensidad_dolor);
     setHallazgoEnEdicion(hallazgo);
     setPuntoSeleccionado({
       seleccionId: crypto.randomUUID(),
       lado: hallazgo.lado_pie,
-      posicion: [hallazgo.coordenada_x, hallazgo.coordenada_y, hallazgo.coordenada_z],
-      normal: [hallazgo.normal_x, hallazgo.normal_y, hallazgo.normal_z],
+      posicion: [ubicacion.posicion.x * signo, ubicacion.posicion.y, ubicacion.posicion.z],
+      normal: [ubicacion.normal.x * signo, ubicacion.normal.y, ubicacion.normal.z],
+      region: ubicacion.region,
     });
   };
 
@@ -645,6 +718,7 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h3 id="hallazgo-dialog-title" className="font-semibold text-slate-900">{correccionActiva ? "Corregir registro" : "Nuevo hallazgo"} · pie {puntoSeleccionado.lado}</h3>
+                <p className="mt-1 text-sm font-medium text-teal-800">Zona: {nombreZona(puntoSeleccionado.region, puntoSeleccionado.lado, puntoSeleccionado.normal) ?? "sin identificar"}</p>
                 <p className="mt-1 text-sm text-slate-500">{correccionActiva ? "La corrección se añadirá al historial de auditoría." : "Completa los datos del hallazgo marcado."}</p>
               </div>
               <button type="button" onClick={cancelarBorrador} aria-label="Cerrar formulario" className="rounded-md px-2 py-1 text-slate-500 hover:bg-slate-100">×</button>
@@ -653,6 +727,7 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
             <input type="hidden" name="pacienteId" value={pacienteId} />
             <input type="hidden" name="corrigeHallazgoId" value={correccionActiva ? hallazgoEnEdicion?.id ?? "" : ""} />
             <input type="hidden" name="ladoPie" value={puntoSeleccionado.lado} />
+            <input type="hidden" name="region" value={puntoSeleccionado.region} />
             <input type="hidden" name="x" value={puntoSeleccionado.posicion[0]} />
             <input type="hidden" name="y" value={puntoSeleccionado.posicion[1]} />
             <input type="hidden" name="z" value={puntoSeleccionado.posicion[2]} />
@@ -759,7 +834,7 @@ export function FootModelViewer({ pacienteId, atenciones, hallazgos: hallazgosIn
                                   <i aria-hidden="true" className={`h-2.5 w-2.5 rounded-full ${hallazgo.intensidad_dolor >= 7 ? "bg-red-600" : hallazgo.intensidad_dolor >= 4 ? "bg-amber-500" : "bg-teal-700"}`} />
                                   {hallazgo.afeccion}
                                 </span>
-                                <span className="text-xs text-slate-500">Pie {hallazgo.lado_pie} · Dolor {hallazgo.intensidad_dolor}/10</span>
+                                <span className="text-xs text-slate-500">Pie {hallazgo.lado_pie}{zonaHallazgo(hallazgo, regionesV2) ? ` · ${zonaHallazgo(hallazgo, regionesV2)}` : ""} · Dolor {hallazgo.intensidad_dolor}/10</span>
                               </span>
                             </button>
                             <MenuHallazgo onCorregir={() => iniciarEdicion(hallazgo)} />
