@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { PropsWithChildren } from "react";
 import { cerrarSesionAction } from "@/app/actions/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -60,13 +61,13 @@ export async function DashboardLayout({ children }: PropsWithChildren) {
             </div>
             <div className="hidden shrink-0 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium capitalize text-slate-600 md:block">{fechaActual}</div>
           </div>
-          <div className="flex shrink-0 items-center gap-2 border-l border-slate-200 pl-3 sm:gap-3 sm:pl-4">
+          <Link href="/configuracion" aria-label={`Configuración de la cuenta de ${nombreUsuario}`} className="flex shrink-0 items-center gap-2 border-l border-slate-200 pl-3 hover:opacity-80 sm:gap-3 sm:pl-4">
             <div aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-slate-200 bg-teal-50 text-xs font-semibold text-teal-800 ring-2 ring-teal-100">{iniciales}</div>
             <div className="hidden min-w-0 sm:block">
               <p className="max-w-44 truncate text-sm font-semibold text-slate-900">{nombreUsuario}</p>
-              <p className="text-[11px] capitalize text-slate-500">{perfil?.rol || "Profesional"}</p>
+              <p className="text-[11px] text-slate-500">{perfil?.rol === "admin" ? "Administrador" : "Clínico"}</p>
             </div>
-          </div>
+          </Link>
         </header>
         <main className="flex-1 px-4 py-5 sm:px-6 md:py-7 lg:px-8 print:p-0">
           <div className="mx-auto w-full max-w-7xl print:max-w-none">{children}</div>

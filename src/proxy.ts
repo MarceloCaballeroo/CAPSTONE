@@ -41,6 +41,23 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // Con verificación en dos pasos activa, la sesión de solo contraseña (aal1) no entra hasta ingresar el código.
+  const verificarPath = '/login/verificar';
+  if (user) {
+    const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    const faltaCodigo = aal?.nextLevel === 'aal2' && aal.currentLevel !== 'aal2';
+    if (faltaCodigo && request.nextUrl.pathname !== verificarPath && !isPublicRoute) {
+      const url = request.nextUrl.clone();
+      url.pathname = verificarPath;
+      return NextResponse.redirect(url);
+    }
+    if (!faltaCodigo && request.nextUrl.pathname === verificarPath) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/dashboard';
+      return NextResponse.redirect(url);
+    }
+  }
+
   if (user && ['/login', '/register'].includes(request.nextUrl.pathname)) {
     const url = request.nextUrl.clone();
     url.pathname = '/dashboard';

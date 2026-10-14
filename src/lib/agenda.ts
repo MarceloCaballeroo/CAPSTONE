@@ -19,6 +19,16 @@ export function fechaClaveChile(fecha: Date): string {
   return `${valor("year")}-${valor("month")}-${valor("day")}`;
 }
 
+export function avanzarFecha(fecha: string, dias: number): string {
+  const nueva = fechaUTC(fecha);
+  nueva.setUTCDate(nueva.getUTCDate() + dias);
+  return claveFecha(nueva);
+}
+
+export function fechaCortaChile(fecha: string | Date): string {
+  return new Intl.DateTimeFormat("es-CL", { timeZone: zonaHorariaAgenda, day: "numeric", month: "short", year: "numeric" }).format(new Date(fecha));
+}
+
 export function obtenerFechaInicioSemana(fechaSolicitada?: string, hoy = new Date()): string {
   const candidata = /^\d{4}-\d{2}-\d{2}$/.test(fechaSolicitada ?? "") ? fechaUTC(fechaSolicitada!) : new Date(NaN);
   const fecha = Number.isNaN(candidata.getTime()) || claveFecha(candidata) !== fechaSolicitada

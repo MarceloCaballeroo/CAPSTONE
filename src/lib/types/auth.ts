@@ -1,1 +1,1 @@
-export type FormState = { error?: string; success?: boolean };
+export type FormState = { error?: string; success?: boolean; mensaje?: string };

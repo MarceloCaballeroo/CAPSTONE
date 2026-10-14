@@ -22,10 +22,14 @@ export async function crearCitaAction(_prev: FormState, formData: FormData): Pro
   const fechaHoraISO = convertirFechaHoraChileAISO(parsed.data.fechaHora);
   if (Date.parse(fechaHoraISO) < Date.now()) return { error: "La cita debe quedar en el presente o en el futuro." };
 
+  const { data: perfil } = await supabase.from("usuario").select("organizacion:organizacion_id(duracion_cita_min)").eq("id", user.id).maybeSingle();
+  const duracion = (perfil?.organizacion as unknown as { duracion_cita_min?: number } | null)?.duracion_cita_min;
+
   const { data: cita, error } = await supabase.from("cita").insert({
     paciente_id: parsed.data.pacienteId,
     usuario_id: user.id,
     fecha_hora: fechaHoraISO,
+    ...(duracion ? { duracion_min: duracion } : {}),
     estado: "agendada",
     motivo_consulta: parsed.data.motivo || null,
   }).select("id").single();
