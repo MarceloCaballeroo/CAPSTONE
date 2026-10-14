@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { MODELO_PIE_VERSION, type EstadoGuardarHallazgo, type HallazgoClinico } from "@/lib/types/hallazgos";
+import type { EstadoGuardarHallazgo, HallazgoClinico } from "@/lib/types/hallazgos";
 import { hallazgoClinicoSchema } from "@/lib/validations/hallazgos";
 
 export async function guardarHallazgoClinicoAction(_previo: EstadoGuardarHallazgo, formData: FormData): Promise<EstadoGuardarHallazgo> {
@@ -12,6 +12,7 @@ export async function guardarHallazgoClinicoAction(_previo: EstadoGuardarHallazg
     pacienteId: formData.get("pacienteId"),
     corrigeHallazgoId: formData.get("corrigeHallazgoId") || undefined,
     atencionId: formData.get("atencionId"),
+    modeloVersion: formData.get("modeloVersion") ?? undefined,
     ladoPie: formData.get("ladoPie"),
     x: formData.get("x"),
     y: formData.get("y"),
@@ -56,7 +57,7 @@ export async function guardarHallazgoClinicoAction(_previo: EstadoGuardarHallazg
     normal_x: parsed.data.normalX,
     normal_y: parsed.data.normalY,
     normal_z: parsed.data.normalZ,
-    modelo_version: MODELO_PIE_VERSION,
+    modelo_version: parsed.data.modeloVersion,
     afeccion: parsed.data.afeccion,
     intensidad_dolor: parsed.data.intensidadDolor,
     creado_por: user.id,
