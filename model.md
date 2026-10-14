@@ -275,7 +275,6 @@ Sin política INSERT/UPDATE/DELETE y sin privilegios de escritura para `anon`/`a
 | Hallazgos inmutables | Sin UPDATE/DELETE; corrección = fila nueva con `corrige_hallazgo_id`. |
 | Auditoría | Triggers en todas las tablas clínicas; guarda solo campos modificados y omite datos personales (solo registra los *nombres* de campos sensibles modificados). |
 
-Migraciones: `supabase/migrations/20261014_auditoria_completa.sql` y `supabase/migrations/20261014_normalizacion_y_mejoras.sql`.
 
 Pendiente de diseño: `atencion.requiere_derivacion` es derivable de `derivacion` y de las reglas IWGDF (riesgo de desincronización); `rol`, `lado_pie` y `afeccion` usan `text` con CHECK en lugar de enums.
 
@@ -301,7 +300,6 @@ Todas son `SECURITY DEFINER` con `search_path` fijo. `anon` y PUBLIC no tienen E
 | `paciente`, `ficha_clinica`, `atencion`, `derivacion`, `cita`, `imagen_clinica`, `hallazgo_clinico` | `auditar_<tabla>` | AFTER INSERT / UPDATE / DELETE → `private.auditar_cambio()` |
 | `log_auditoria` | `log_auditoria_no_mutar` | BEFORE UPDATE / DELETE → `private.log_auditoria_inmutable()` |
 
-Migración: `supabase/migrations/20261014_auditoria_completa.sql`.
 
 ## Configuración pendiente (no versionable en SQL)
 

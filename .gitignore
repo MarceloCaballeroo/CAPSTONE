@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Esquema, migraciones y guías de base de datos: información sensible, no se versiona
+/supabase/
