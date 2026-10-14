@@ -118,6 +118,8 @@
 | `detalle` | `jsonb` |  Nullable |
 | `fecha` | `timestamptz` |  |
 
+> Bitácora **append-only**. Solo se escribe mediante triggers (`private.auditar_cambio()`); `detalle` guarda `datos_nuevos` (INSERT), `datos_anteriores` y `datos_nuevos` (UPDATE) o `datos_anteriores` (DELETE). `usuario_id` es `auth.uid()` (nulo si no hay sesión de usuario). No tiene `organizacion_id` ni `ip_origen`; la organización se deduce vía `usuario`.
+
 ## Table `imagen_clinica`
 
 ### Columns
@@ -251,59 +253,56 @@ Findings are append-only. Each insert is written to `log_auditoria`; no UPDATE o
 
 ### `log_auditoria`
 
+Sin política INSERT/UPDATE/DELETE y sin privilegios de escritura para `anon`/`authenticated`: solo los triggers SECURITY DEFINER escriben. UPDATE/DELETE bloqueados además por el trigger `log_auditoria_no_mutar`.
+
 | Policy | Command | Roles | Action | USING | WITH CHECK |
 |--------|---------|-------|--------|-------|------------|
 | `tenant_log_select` | SELECT | authenticated | PERMISSIVE | `private.es_miembro_de_organizacion(( SELECT usuario.organizacion_id    FROM usuario   WHERE (usuario.id = log_auditoria.usuario_id)))` | — |
-| `tenant_log_insert` | INSERT | authenticated | PERMISSIVE | — | `((usuario_id = auth.uid()) AND private.es_miembro_de_organizacion(( SELECT usuario.organizacion_id    FROM usuario   WHERE (usuario.id = auth.uid()))))` |
 
 
+
+## Normalización y reglas de integridad (estado real de la base)
+
+| Regla | Implementación |
+|-------|----------------|
+| Multi-tenancy (3FN) | Solo `usuario` y `paciente` llevan `organizacion_id`; el resto lo hereda por FK y RLS (`private.es_miembro_de_organizacion`). |
+| RUT válido y sin duplicados | `paciente.rut` (`text`, formato con puntos y guion) con `CHECK public.rut_valido(rut)` (módulo 11) y unicidad `(organizacion_id, rut normalizado)` sin importar el formato. |
+| Diagnóstico CIE-10 (3FN) | `atencion.diagnostico_cie10` es FK a `catalogo_cie10(codigo)`; el nombre solo vive en el catálogo. Carga inicial de 17 códigos podológicos; ampliable por carga masiva. |
+| Antecedentes (1FN) | `ficha_antecedente` (una fila por alergia, enfermedad base, medicamento o cirugía). `ficha_clinica.antecedentes` queda como nota general. |
+| Atención ↔ cita | `atencion.cita_id` (único, opcional). |
+| Sin doble reserva | `cita.duracion_min` + `cita.fecha_hora_fin` (calculada por trigger) y restricción de exclusión `cita_sin_solape` por profesional, ignorando citas canceladas o no asistidas. Error `23P01` en la app. |
+| Retención clínica | FK `ON DELETE RESTRICT` entre paciente, ficha, atención, derivación e imagen; baja lógica con `paciente.activo`. |
+| Hallazgos inmutables | Sin UPDATE/DELETE; corrección = fila nueva con `corrige_hallazgo_id`. |
+| Auditoría | Triggers en todas las tablas clínicas; guarda solo campos modificados y omite datos personales (solo registra los *nombres* de campos sensibles modificados). |
+
+Migraciones: `supabase/migrations/20261014_auditoria_completa.sql` y `supabase/migrations/20261014_normalizacion_y_mejoras.sql`.
+
+Pendiente de diseño: `atencion.requiere_derivacion` es derivable de `derivacion` y de las reglas IWGDF (riesgo de desincronización); `rol`, `lado_pie` y `afeccion` usan `text` con CHECK en lugar de enums.
 
 ## Functions
 
-crear_organizacion_inicial:
+Todas son `SECURITY DEFINER` con `search_path` fijo. `anon` y PUBLIC no tienen EXECUTE.
 
-declare
-  nueva_organizacion uuid;
-begin
-  if auth.uid() is null then
-    raise exception 'Se requiere una sesion activa';
-  end if;
+| Función | Ejecutable por | Descripción |
+|---------|----------------|-------------|
+| `public.crear_organizacion_inicial(nombre_organizacion text, nombre_usuario text, plan text default 'individual') → uuid` | authenticated | Requiere sesión; valida `plan` (`individual` / `clinica`); usa advisory lock y es idempotente. Crea la organización y el usuario admin. |
+| `public.invitar_a_organizacion(usuario_invitado uuid, nombre_usuario text, rol_asignado text default 'clinico')` | authenticated | Solo admin activo; la organización debe tener plan `clinica`. Agrega un usuario a la organización del admin. |
+| `public.admin_actualizar_usuario(objetivo uuid, nuevo_rol text default null, nuevo_activo boolean default null)` | authenticated | Solo admin activo; no puede modificarse a sí mismo; rol en (`admin`, `clinico`); solo actúa sobre usuarios de su organización. |
+| `public.handle_new_user()` | nadie (trigger) | Placeholder: retorna `NEW`. El alta de `usuario` la hace `crear_organizacion_inicial`. |
+| `private.auditar_cambio()` | nadie (trigger) | Escribe en `log_auditoria` tras INSERT/UPDATE/DELETE. |
+| `private.log_auditoria_inmutable()` | nadie (trigger) | Lanza excepción ante UPDATE/DELETE en `log_auditoria`. |
 
-  insert into public.organizacion (nombre, plan_tipo)
-  values (nombre_organizacion, plan)
-  returning id into nueva_organizacion;
+> Los 3 avisos del linter de Supabase (`authenticated_security_definer_function_executable`) sobre las funciones de onboarding y administración son intencionales: la app las invoca vía RPC y cada una valida `auth.uid()` y el rol internamente.
 
-  insert into public.usuario (id, nombre, rol, activo, organizacion_id)
-  values (auth.uid(), nombre_usuario, 'admin', true, nueva_organizacion);
+## Triggers de auditoría
 
-  return nueva_organizacion;
-end;
+| Tabla | Trigger | Eventos |
+|-------|---------|---------|
+| `paciente`, `ficha_clinica`, `atencion`, `derivacion`, `cita`, `imagen_clinica`, `hallazgo_clinico` | `auditar_<tabla>` | AFTER INSERT / UPDATE / DELETE → `private.auditar_cambio()` |
+| `log_auditoria` | `log_auditoria_no_mutar` | BEFORE UPDATE / DELETE → `private.log_auditoria_inmutable()` |
 
-handle_new_user:
+Migración: `supabase/migrations/20261014_auditoria_completa.sql`.
 
-BEGIN
-    INSERT INTO public.usuario (id, nombre, rol)
-    VALUES (
-        new.id,
-        COALESCE(new.raw_user_meta_data->>'nombre', new.email),
-        COALESCE(new.raw_user_meta_data->>'rol', 'clinico')
-    );
-    RETURN NEW;
-END;
+## Configuración pendiente (no versionable en SQL)
 
-invitar_a_organizacion:
-
-declare
-  mi_organizacion uuid;
-begin
-  select organizacion_id into mi_organizacion
-  from public.usuario
-  where id = auth.uid() and rol = 'admin' and activo = true;
-
-  if mi_organizacion is null then
-    raise exception 'Solo un admin de organización puede invitar';
-  end if;
-
-  insert into public.usuario (id, nombre, rol, activo, organizacion_id)
-  values (usuario_invitado, nombre_usuario, rol_asignado, true, mi_organizacion);
-end;
+- Activar *Prevent use of leaked passwords* en Supabase Auth (puede requerir plan de pago).

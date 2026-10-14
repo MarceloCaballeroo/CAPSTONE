@@ -30,6 +30,7 @@ export async function crearCitaAction(_prev: FormState, formData: FormData): Pro
     motivo_consulta: parsed.data.motivo || null,
   }).select("id").single();
 
+  if (error?.code === "23P01") return { error: "Ya tienes una cita en ese horario. Elige otra hora." };
   if (error || !cita) return { error: "No pudimos guardar la cita. Verifica el paciente y vuelve a intentarlo." };
 
   revalidatePath("/agenda");
