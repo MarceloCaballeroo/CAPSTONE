@@ -10,6 +10,11 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --animate-marquesina: marquesina 38s linear infinite;
+
+  @keyframes marquesina {
+    to { transform: translateX(-50%); }
+  }
 }
 
 @media (prefers-color-scheme: dark) {
