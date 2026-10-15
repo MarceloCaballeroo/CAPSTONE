@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { formatearRut, pacienteSchema, type PacienteFormData } from "@/lib/validations/patients";
+import { descomponerRut, pacienteSchema, type PacienteFormData } from "@/lib/validations/patients";
 import type { FormState } from "@/lib/types/auth";
 
 function obtenerDatos(formData: FormData) {
@@ -39,17 +39,18 @@ function traducirErrorPaciente(message: string): string {
 }
 
 function mapearDatosPaciente(data: PacienteFormData) {
+  const { rut_numero, rut_dv } = descomponerRut(data.rut);
   return {
     nombre: data.nombre,
     apellido_paterno: data.apellidoPaterno,
     apellido_materno: data.apellidoMaterno || null,
-    rut: formatearRut(data.rut),
+    rut_numero,
+    rut_dv,
     fecha_nacimiento: data.fechaNacimiento || null,
     sexo_biologico: data.sexoBiologico || null,
     telefono: data.telefono || null,
     email: data.email || null,
     direccion: data.direccion || null,
-    comuna: data.comuna || null,
     prevision: data.prevision || null,
     centro_salud_origen: data.centroSaludOrigen || null,
     contacto_emergencia_nombre: data.contactoEmergenciaNombre || null,
@@ -74,6 +75,7 @@ export async function crearPacienteAction(_prev: FormState, formData: FormData):
     consentimiento: true,
     fecha_consentimiento: new Date().toISOString(),
     organizacion_id: organizacionId,
+    activo: true,
   }).select("id").single();
 
   if (error || !paciente) return { error: traducirErrorPaciente(error?.message ?? "") };

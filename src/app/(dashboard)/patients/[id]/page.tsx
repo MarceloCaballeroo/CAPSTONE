@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 import { FootModelViewer, type AtencionLineaTiempo } from "@/features/patients/FootModelViewer";
 import { PrintFichaButton } from "@/features/patients/PrintFichaButton";
 import type { HallazgoClinico } from "@/lib/types/hallazgos";
+import { formatearRut } from "@/lib/validations/patients";
 
 const etiquetasRiesgo: Record<string, string> = {
   muy_bajo: "Muy bajo",
@@ -31,15 +32,30 @@ function inicialesPaciente(nombre: string, apellido: string): string {
   return `${nombre.trim()[0] ?? ""}${apellido.trim()[0] ?? ""}`.toUpperCase();
 }
 
+type ComunaRelacion = {
+  id: number;
+  nombre: string;
+  region?: { id: number; nombre: string; ordinal?: string | null } | { id: number; nombre: string; ordinal?: string | null }[] | null;
+};
+
 export default async function PacientePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createClient();
-  const { data: paciente, error: pacienteError } = await supabase.from("paciente").select("*").eq("id", id).single();
+  const { data: paciente, error: pacienteError } = await supabase
+    .from("paciente")
+    .select("*")
+    .eq("id", id)
+    .single();
   if (pacienteError && pacienteError.code === "PGRST116") notFound();
 
   if (pacienteError || !paciente) {
+    if (pacienteError) console.error("Error al cargar paciente:", pacienteError);
     return <Alert>No pudimos cargar la ficha del paciente.</Alert>;
   }
+
+  const { data: comunaData } = paciente.comuna_id
+    ? await supabase.from("comuna").select("id, nombre, region ( id, nombre, ordinal )").eq("id", paciente.comuna_id).maybeSingle()
+    : { data: null };
 
   const { data: ficha } = await supabase.from("ficha_clinica").select("id, antecedentes, updated_at").eq("paciente_id", id).maybeSingle();
   const { data: atenciones } = ficha ? await supabase.from("atencion").select("id, usuario_id, diagnostico_cie10, nivel_riesgo_iwgdf, requiere_derivacion, observaciones, created_at").eq("ficha_id", ficha.id).order("created_at", { ascending: false }) : { data: [] };
@@ -61,6 +77,12 @@ export default async function PacientePage({ params }: { params: Promise<{ id: s
   const atencionReciente = atenciones?.[0];
   const riesgo = atencionReciente?.nivel_riesgo_iwgdf;
   const nombreCompleto = `${paciente.nombre} ${paciente.apellido_paterno} ${paciente.apellido_materno ?? ""}`.trim();
+  const comunaObj = (Array.isArray(comunaData) ? comunaData[0] : comunaData) as ComunaRelacion | null;
+  const regionObj = (Array.isArray(comunaObj?.region) ? comunaObj?.region[0] : comunaObj?.region) ?? null;
+  const nombreComuna = comunaObj?.nombre ?? (typeof paciente.comuna === "string" ? paciente.comuna : null);
+  const nombreRegion = regionObj?.nombre ?? null;
+  const ordinalRegion = regionObj?.ordinal ?? null;
+  const rutTexto = formatearRut(paciente.rut_numero ?? paciente.rut, paciente.rut_dv);
 
   return (
     <div className="patient-record grid gap-5">
@@ -88,13 +110,18 @@ export default async function PacientePage({ params }: { params: Promise<{ id: s
                 </ClickTooltip>
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-slate-600">
-                <span>RUT <strong className="font-medium text-slate-900">{paciente.rut}</strong></span>
+                <span>RUT <strong className="font-medium text-slate-900">{rutTexto}</strong></span>
                 <span aria-hidden="true" className="text-slate-300">·</span>
                 <span>{paciente.sexo_biologico ? paciente.sexo_biologico.replaceAll("_", " ") : "Sexo no registrado"}</span>
                 <span aria-hidden="true" className="text-slate-300">·</span>
                 <span>{paciente.prevision?.replaceAll("_", " ") ?? "Previsión no registrada"}</span>
               </div>
               <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                {paciente.activo === false && (
+                  <span className="rounded-md border border-slate-300 bg-slate-100 px-2.5 py-1 font-semibold text-slate-600">
+                    Paciente inactivo
+                  </span>
+                )}
                 <span className={`rounded-md border px-2.5 py-1 font-medium ${paciente.consentimiento ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
                   {paciente.consentimiento ? `Consentimiento firmado${paciente.fecha_consentimiento ? ` · ${fechaClinica(paciente.fecha_consentimiento)}` : ""}` : "Consentimiento pendiente"}
                 </span>
@@ -133,7 +160,11 @@ export default async function PacientePage({ params }: { params: Promise<{ id: s
               <div><dt className="text-xs text-slate-500">Fecha de nacimiento</dt><dd className="mt-0.5 font-medium text-slate-800">{paciente.fecha_nacimiento ? fechaClinica(paciente.fecha_nacimiento) : "Sin registro"}</dd></div>
               <div><dt className="text-xs text-slate-500">Teléfono</dt><dd className="mt-0.5 font-medium text-slate-800">{paciente.telefono || "Sin registro"}</dd></div>
               <div><dt className="text-xs text-slate-500">Correo</dt><dd className="mt-0.5 break-all font-medium text-slate-800">{paciente.email || "Sin registro"}</dd></div>
-              <div><dt className="text-xs text-slate-500">Dirección</dt><dd className="mt-0.5 font-medium text-slate-800">{[paciente.direccion, paciente.comuna].filter(Boolean).join(", ") || "Sin registro"}</dd></div>
+              <div><dt className="text-xs text-slate-500">Dirección</dt><dd className="mt-0.5 font-medium text-slate-800">{paciente.direccion || "Sin registro"}</dd></div>
+              <div><dt className="text-xs text-slate-500">Comuna</dt><dd className="mt-0.5 font-medium text-slate-800">{nombreComuna || "Sin registro"}</dd></div>
+              {nombreRegion && (
+                <div><dt className="text-xs text-slate-500">Región</dt><dd className="mt-0.5 font-medium text-slate-800">{nombreRegion}{ordinalRegion ? ` (${ordinalRegion})` : ""}</dd></div>
+              )}
               <div><dt className="text-xs text-slate-500">Centro de origen</dt><dd className="mt-0.5 font-medium text-slate-800">{paciente.centro_salud_origen || "Sin registro"}</dd></div>
               <div><dt className="text-xs text-slate-500">Contacto de emergencia</dt><dd className="mt-0.5 font-medium text-slate-800">{paciente.contacto_emergencia_nombre || "Sin registro"}</dd>{paciente.contacto_emergencia_telefono && <dd className="text-xs text-slate-500">{paciente.contacto_emergencia_telefono}</dd>}</div>
             </dl>

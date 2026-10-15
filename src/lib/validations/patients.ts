@@ -40,7 +40,34 @@ export const pacienteSchema = z.object({
 
 export type PacienteFormData = z.infer<typeof pacienteSchema>;
 
-export function formatearRut(rut: string): string {
+export function descomponerRut(rut: string): { rut_numero: number; rut_dv: string } {
   const limpio = rut.replace(/[.\-\s]/g, "").toUpperCase();
-  return limpio.length > 1 ? `${limpio.slice(0, -1)}-${limpio.slice(-1)}` : limpio;
+  const cuerpo = limpio.slice(0, -1);
+  const verificador = limpio.slice(-1);
+  return {
+    rut_numero: parseInt(cuerpo, 10),
+    rut_dv: verificador,
+  };
+}
+
+export function formatearRut(
+  rutOrNumero?: string | number | null,
+  dv?: string | null
+): string {
+  if (rutOrNumero === null || rutOrNumero === undefined || rutOrNumero === "") return "Sin RUT";
+
+  if (typeof rutOrNumero === "number" || (dv !== undefined && dv !== null)) {
+    const num = typeof rutOrNumero === "number" ? rutOrNumero : parseInt(String(rutOrNumero).replace(/\D/g, ""), 10);
+    if (isNaN(num)) return "Sin RUT";
+    const numFormateado = num.toLocaleString("es-CL");
+    return dv ? `${numFormateado}-${dv.toUpperCase()}` : numFormateado;
+  }
+
+  const limpio = String(rutOrNumero).replace(/[.\-\s]/g, "").toUpperCase();
+  if (!limpio) return "Sin RUT";
+  if (limpio.length === 1) return limpio;
+  const cuerpo = limpio.slice(0, -1);
+  const verificador = limpio.slice(-1);
+  const num = parseInt(cuerpo, 10);
+  return isNaN(num) ? `${cuerpo}-${verificador}` : `${num.toLocaleString("es-CL")}-${verificador}`;
 }

@@ -5,6 +5,7 @@ import { Alert } from "@/components/common/Alert";
 import { Button } from "@/components/common/Button";
 import { Input } from "@/components/common/Input";
 import type { FormState } from "@/lib/types/auth";
+import { formatearRut } from "@/lib/validations/patients";
 
 type PacienteInicial = {
   id?: string;
@@ -12,12 +13,15 @@ type PacienteInicial = {
   apellido_paterno?: string | null;
   apellido_materno?: string | null;
   rut?: string | null;
+  rut_numero?: number | null;
+  rut_dv?: string | null;
   fecha_nacimiento?: string | null;
   sexo_biologico?: string | null;
   telefono?: string | null;
   email?: string | null;
   direccion?: string | null;
   comuna?: string | null;
+  comuna_id?: number | null;
   prevision?: string | null;
   centro_salud_origen?: string | null;
   contacto_emergencia_nombre?: string | null;
@@ -48,7 +52,14 @@ export function PatientForm({ action, paciente }: PacienteFormProps) {
           <Input id="nombre" name="nombre" label="Nombre" defaultValue={paciente?.nombre ?? ""} required />
           <Input id="apellidoPaterno" name="apellidoPaterno" label="Apellido paterno" defaultValue={paciente?.apellido_paterno ?? ""} required />
           <Input id="apellidoMaterno" name="apellidoMaterno" label="Apellido materno" defaultValue={paciente?.apellido_materno ?? ""} />
-          <Input id="rut" name="rut" label="RUT" hint="Ejemplo: 12.345.678-5" defaultValue={paciente?.rut ?? ""} required />
+          <Input
+            id="rut"
+            name="rut"
+            label="RUT"
+            hint="Ejemplo: 12.345.678-5"
+            defaultValue={paciente?.rut_numero ? formatearRut(paciente.rut_numero, paciente.rut_dv) : paciente?.rut ?? ""}
+            required
+          />
         </div>
         {!paciente && (
           <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">

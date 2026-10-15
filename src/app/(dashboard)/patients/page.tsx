@@ -59,24 +59,49 @@ export default async function PacientesPage({ searchParams }: { searchParams: Pr
   const idsFiltro = filtro === "todos" || filtro === "sin" ? null : listaEstados.filter(([, estado]) => cumpleFiltro[filtro](estado)).map(([id]) => id);
   const filtroNoDisponible = filtro !== "todos" && !estados;
 
-  let pacientesData: { id: string; nombre: string; apellido_paterno: string; apellido_materno: string | null; rut: string; telefono: string | null; consentimiento: boolean }[] = [];
+  type PacienteRow = {
+    id: string;
+    nombre: string;
+    apellido_paterno: string;
+    apellido_materno: string | null;
+    rut_numero?: number | null;
+    rut_dv?: string | null;
+    rut?: string | null;
+    telefono: string | null;
+    consentimiento: boolean;
+    activo?: boolean | null;
+    comuna?: { nombre: string } | { nombre: string }[] | null;
+  };
+  let pacientesData: PacienteRow[] = [];
   let count = 0;
   let error = false;
   if (!filtroNoDisponible && idsFiltro?.length !== 0) {
     let consulta = supabase
       .from("paciente")
-      .select("id, nombre, apellido_paterno, apellido_materno, rut, telefono, consentimiento", { count: "exact" })
+      .select("id, nombre, apellido_paterno, apellido_materno, rut_numero, rut_dv, telefono, consentimiento, activo")
       .order("apellido_paterno", { ascending: true })
       .range(desde, desde + pacientesPorPagina - 1);
     if (busqueda) {
-      const termino = busqueda.replace(/[(),]/g, "");
-      consulta = consulta.or(`nombre.ilike.%${termino}%,apellido_paterno.ilike.%${termino}%,rut.ilike.%${termino}%`);
+      const termino = busqueda.replace(/[(),]/g, "").trim();
+      const soloDigitos = termino.replace(/\D/g, "");
+      const numRut = soloDigitos ? parseInt(soloDigitos, 10) : null;
+      if (numRut && !isNaN(numRut)) {
+        consulta = consulta.or(`nombre.ilike.%${termino}%,apellido_paterno.ilike.%${termino}%,rut_numero.eq.${numRut}`);
+      } else {
+        consulta = consulta.or(`nombre.ilike.%${termino}%,apellido_paterno.ilike.%${termino}%,apellido_materno.ilike.%${termino}%`);
+      }
     }
     if (idsFiltro) consulta = consulta.in("id", idsFiltro);
     if (filtro === "sin" && listaEstados.length) consulta = consulta.not("id", "in", `(${listaEstados.map(([id]) => id).join(",")})`);
     const resultado = await consulta;
-    pacientesData = resultado.data ?? [];
-    count = resultado.count ?? 0;
+    if (resultado.error) {
+      console.error("Error al consultar pacientes:", resultado.error);
+    }
+    pacientesData = (resultado.data as unknown as PacienteRow[]) ?? [];
+    count = busqueda ? (pacientesData.length >= pacientesPorPagina ? desde + pacientesData.length + 1 : desde + pacientesData.length)
+      : idsFiltro ? idsFiltro.length
+      : filtro === "sin" ? conteo("sin")
+      : (totalPacientes ?? 0);
     error = Boolean(resultado.error);
   }
 
@@ -121,7 +146,7 @@ export default async function PacientesPage({ searchParams }: { searchParams: Pr
             {filtros.map((clave) => {
               const activo = clave === filtro;
               return (
-                <Link key={clave} href={enlace({ filtro: clave })} aria-current={activo ? "page" : undefined}
+                <Link key={clave} href={enlace({ filtro: clave })} prefetch={false} aria-current={activo ? "page" : undefined}
                   className={`inline-flex min-h-10 items-center gap-2 rounded-full border px-3.5 text-sm font-medium transition-colors ${activo ? "border-slate-800 bg-slate-800 text-white" : "border-slate-200 bg-white text-slate-700 hover:border-slate-400"}`}>
                   {puntoFiltro(clave) && <span aria-hidden="true" className={`h-2 w-2 rounded-full ${puntoFiltro(clave)}`} />}
                   {nombreFiltro(clave)}
@@ -164,8 +189,20 @@ export default async function PacientesPage({ searchParams }: { searchParams: Pr
                             <Link className="flex items-center gap-3 text-slate-900 hover:text-teal-800" href={`/patients/${paciente.id}`}>
                               <span aria-hidden="true" className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-teal-50 text-xs font-semibold text-teal-800">{`${paciente.nombre[0] ?? ""}${paciente.apellido_paterno[0] ?? ""}`.toUpperCase()}</span>
                               <span>
-                                <span className="font-semibold">{paciente.nombre} {paciente.apellido_paterno} {paciente.apellido_materno ?? ""}</span>
-                                <span className="mt-0.5 block font-mono text-xs text-slate-500">{formatearRut(paciente.rut)} · {paciente.telefono ?? "Sin teléfono"}</span>
+                                <span className="font-semibold">
+                                  {paciente.nombre} {paciente.apellido_paterno} {paciente.apellido_materno ?? ""}
+                                  {paciente.activo === false && (
+                                    <span className="ml-2 inline-flex items-center rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                                      Inactivo
+                                    </span>
+                                  )}
+                                </span>
+                                <span className="mt-0.5 block font-mono text-xs text-slate-500">
+                                  {formatearRut(paciente.rut_numero ?? paciente.rut, paciente.rut_dv)} · {paciente.telefono ?? "Sin teléfono"}
+                                  {(Array.isArray(paciente.comuna) ? paciente.comuna[0]?.nombre : paciente.comuna?.nombre) && (
+                                    <span className="font-sans text-slate-400"> · {Array.isArray(paciente.comuna) ? paciente.comuna[0]?.nombre : paciente.comuna?.nombre}</span>
+                                  )}
+                                </span>
                               </span>
                             </Link>
                           </td>
