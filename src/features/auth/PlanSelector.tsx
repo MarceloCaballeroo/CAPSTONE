@@ -1,11 +1,6 @@
 "use client";
 
-type Plan = "individual" | "clinica";
-
-const PLANES = [
-  { id: "individual" as const, nombre: "Individual", precio: "USD 15/mes", detalle: "Tu propia consulta, administrada solo por ti." },
-  { id: "clinica" as const, nombre: "Clínica", precio: "USD 18/mes por podólogo", detalle: "Varios profesionales comparten pacientes y agenda." },
-];
+import { PLANES, type Plan } from "@/lib/planes";
 
 export function PlanSelector({ value, onChange }: { value: Plan; onChange: (plan: Plan) => void }) {
   return (

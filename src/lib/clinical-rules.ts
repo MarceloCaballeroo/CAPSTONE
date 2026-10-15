@@ -9,7 +9,7 @@ export const GRUPOS_IWGDF: Record<NivelRiesgo, { grupo: number; nombre: string; 
   muy_bajo: { grupo: 0, nombre: 'Muy bajo', define: 'Sensibilidad conservada y sin signos de enfermedad arterial periférica.', controlMeses: [12, 12] },
   bajo: { grupo: 1, nombre: 'Bajo', define: 'Pérdida de sensibilidad protectora o enfermedad arterial periférica.', controlMeses: [6, 12] },
   moderado: { grupo: 2, nombre: 'Moderado', define: 'Pérdida de sensibilidad junto con enfermedad arterial o deformidad del pie.', controlMeses: [3, 6] },
-  alto: { grupo: 3, nombre: 'Alto', define: 'Antecedente de úlcera o amputación de extremidad inferior.', controlMeses: [1, 3] },
+  alto: { grupo: 3, nombre: 'Alto', define: 'Pérdida de sensibilidad protectora o enfermedad arterial periférica, junto con antecedente de úlcera o amputación de extremidad inferior.', controlMeses: [1, 3] },
 };
 
 export function textoControlSugerido(nivel: NivelRiesgo): string {
@@ -64,14 +64,18 @@ export function evaluarRiesgoYDerivacion(params: EvaluacionClinicaParams): Resul
   }
 
   // 2. Clasificación IWGDF
+  const psp = !params.monofilamentoSensible; // pérdida de sensibilidad protectora
+  const eap = !params.pulsosPresentes;       // enfermedad arterial periférica
   let nivelRiesgo: NivelRiesgo = 'muy_bajo';
 
   if (params.ulceraPreviaOAmputacion) {
+    // ponytail: IWGDF exige PSP o EAP para el grupo 3; con úlcera previa sin PSP/EAP se mantiene
+    // "alto" por criterio conservador. Falta enfermedad renal terminal (requiere campo y migración nuevos).
     nivelRiesgo = 'alto'; // Grupo 3
     requiereDerivacion = true;
-  } else if (!params.monofilamentoSensible && (!params.pulsosPresentes || params.deformidadPresente)) {
+  } else if ((psp && eap) || (psp && params.deformidadPresente) || (eap && params.deformidadPresente)) {
     nivelRiesgo = 'moderado'; // Grupo 2
-  } else if (!params.monofilamentoSensible || !params.pulsosPresentes) {
+  } else if (psp || eap) {
     nivelRiesgo = 'bajo'; // Grupo 1
   }
 
