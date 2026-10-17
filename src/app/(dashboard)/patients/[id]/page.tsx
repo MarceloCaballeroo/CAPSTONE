@@ -57,6 +57,8 @@ export default async function PacientePage({ params }: { params: Promise<{ id: s
     ? await supabase.from("comuna").select("id, nombre, region ( id, nombre, ordinal )").eq("id", paciente.comuna_id).maybeSingle()
     : { data: null };
 
+  const { data: contactoEmergencia } = await supabase.from("contacto_emergencia").select("nombre, telefono, parentesco").eq("paciente_id", id).order("id").limit(1).maybeSingle();
+
   const { data: ficha } = await supabase.from("ficha_clinica").select("id, antecedentes, updated_at").eq("paciente_id", id).maybeSingle();
   const { data: atenciones } = ficha ? await supabase.from("atencion").select("id, usuario_id, diagnostico_cie10, nivel_riesgo_iwgdf, requiere_derivacion, observaciones, created_at").eq("ficha_id", ficha.id).order("created_at", { ascending: false }) : { data: [] };
   const atencionIds = atenciones?.map((atencion) => atencion.id) ?? [];
@@ -166,7 +168,7 @@ export default async function PacientePage({ params }: { params: Promise<{ id: s
                 <div><dt className="text-xs text-slate-500">Región</dt><dd className="mt-0.5 font-medium text-slate-800">{nombreRegion}{ordinalRegion ? ` (${ordinalRegion})` : ""}</dd></div>
               )}
               <div><dt className="text-xs text-slate-500">Centro de origen</dt><dd className="mt-0.5 font-medium text-slate-800">{paciente.centro_salud_origen || "Sin registro"}</dd></div>
-              <div><dt className="text-xs text-slate-500">Contacto de emergencia</dt><dd className="mt-0.5 font-medium text-slate-800">{paciente.contacto_emergencia_nombre || "Sin registro"}</dd>{paciente.contacto_emergencia_telefono && <dd className="text-xs text-slate-500">{paciente.contacto_emergencia_telefono}</dd>}</div>
+              <div><dt className="text-xs text-slate-500">Contacto de emergencia</dt><dd className="mt-0.5 font-medium text-slate-800">{contactoEmergencia?.nombre ?? "Sin registro"}</dd>{contactoEmergencia?.telefono && <dd className="text-xs text-slate-500">{contactoEmergencia.telefono}{contactoEmergencia.parentesco ? ` · ${contactoEmergencia.parentesco}` : ""}</dd>}</div>
             </dl>
           </Card>
           <Card>

@@ -1,8 +1,15 @@
 import Link from "next/link";
 import { PatientForm } from "@/features/patients/PatientForm";
 import { crearPacienteAction } from "@/app/actions/patients";
+import { createClient } from "@/lib/supabase/server";
 
-export default function NuevoPacientePage() {
+export default async function NuevoPacientePage() {
+  const supabase = await createClient();
+  const [{ data: regiones }, { data: comunas }] = await Promise.all([
+    supabase.from("region").select("id, nombre, ordinal").order("id"),
+    supabase.from("comuna").select("id, nombre, region_id").order("nombre"),
+  ]);
+
   return (
     <>
       <header className="mb-8">
@@ -11,7 +18,7 @@ export default function NuevoPacientePage() {
         <p className="mt-2 text-slate-500">Registra primero lo esencial. El resto puede completarse después.</p>
       </header>
       <div className="max-w-4xl rounded-xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-        <PatientForm action={crearPacienteAction} />
+        <PatientForm action={crearPacienteAction} regiones={regiones ?? []} comunas={comunas ?? []} />
       </div>
     </>
   );
