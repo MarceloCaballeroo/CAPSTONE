@@ -22,23 +22,62 @@
 | `nombre` | `text` |  |
 | `apellido_paterno` | `text` |  |
 | `apellido_materno` | `text` |  Nullable |
-| `rut` | `text` |  Unique with `organizacion_id` (`paciente_org_rut_key`) |
+| `rut_numero` | `int4` |  Cuerpo del RUT, sin dígito verificador |
+| `rut_dv` | `bpchar` |  Dígito verificador (`0-9` o `K`); 1 carácter |
 | `fecha_nacimiento` | `date` |  |
-| `sexo_biologico` | `sexo_biologico` |  |
+| `sexo_biologico` | `sexo_biologico` |  Default `no_especificado` |
 | `telefono` | `text` |  Nullable |
 | `email` | `text` |  Nullable |
 | `direccion` | `text` |  Nullable |
-| `comuna` | `text` |  Nullable |
-| `prevision` | `prevision_salud` |  |
+| `comuna_id` | `int4` |  Nullable; references `comuna` (`ON DELETE SET NULL`) |
+| `prevision` | `prevision_salud` |  Default `fonasa_a` |
 | `centro_salud_origen` | `text` |  Nullable |
-| `contacto_emergencia_nombre` | `text` |  Nullable |
-| `contacto_emergencia_telefono` | `text` |  Nullable |
-| `contacto_emergencia_parentesco` | `text` |  Nullable |
-| `consentimiento` | `bool` |  |
+| `consentimiento` | `bool` |  Default `false` |
 | `fecha_consentimiento` | `timestamptz` |  Nullable |
+| `activo` | `bool` |  Default `true`; baja lógica |
 | `created_at` | `timestamptz` |  |
 | `updated_at` | `timestamptz` |  |
-| `organizacion_id` | `uuid` |  |
+| `organizacion_id` | `uuid` |  References `organizacion` |
+
+> El RUT se guarda **descompuesto** en `rut_numero` + `rut_dv` (la antigua columna `rut` de tipo `text` ya no existe); la app lo recompone para mostrarlo y lo descompone antes de escribir. `fecha_nacimiento`, `sexo_biologico` y `prevision` son `NOT NULL`: el formulario los presenta como opcionales, pero si se envían en `null` la escritura falla (los valores por defecto solo se aplican cuando la columna se omite).
+
+## Table `region`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `id` | `int4` | Primary |
+| `nombre` | `text` | Unique (`region_nombre_key`) |
+| `ordinal` | `text` |  Nullable |
+
+> Catálogo geográfico global de solo lectura (regiones de Chile, con `ordinal` para ordenarlas). Sin `organizacion_id`.
+
+## Table `comuna`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `id` | `int4` | Primary |
+| `nombre` | `text` | Unique (`comuna_nombre_key`) |
+| `region_id` | `int4` | References `region` (`ON DELETE RESTRICT`) |
+
+> Catálogo geográfico global de solo lectura. `paciente.comuna_id` apunta acá; la región **no** se guarda en `paciente`, se deriva por `comuna.region_id`.
+
+## Table `contacto_emergencia`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `id` | `uuid` | Primary; default `gen_random_uuid()` |
+| `paciente_id` | `uuid` | References `paciente` (`ON DELETE CASCADE`) |
+| `nombre` | `text` |  |
+| `telefono` | `text` |  |
+| `parentesco` | `text` |  |
+
+> Relación 1–N con `paciente` (la app gestiona un solo contacto: actualiza el existente o lo crea). Los tres campos son `NOT NULL`, así que un contacto sin teléfono no se puede representar. Sin `organizacion_id`: el tenant se deriva vía `paciente`.
 
 ## Table `ficha_clinica`
 
@@ -202,8 +241,28 @@
 | Policy | Command | Roles | Action | USING | WITH CHECK |
 |--------|---------|-------|--------|-------|------------|
 | `tenant_paciente_select` | SELECT | authenticated | PERMISSIVE | `private.es_miembro_de_organizacion(organizacion_id)` | — |
-| `tenant_paciente_insert` | INSERT | authenticated | PERMISSIVE | — | `((char_length(rut) >= 8) AND (char_length(nombre) > 0) AND private.es_miembro_de_organizacion(organizacion_id))` |
+| `tenant_paciente_insert` | INSERT | authenticated | PERMISSIVE | — | `((char_length(btrim(nombre)) > 0) AND (rut_numero > 0) AND (char_length(rut_dv) = 1) AND private.es_miembro_de_organizacion(organizacion_id))` |
 | `tenant_paciente_update` | UPDATE | authenticated | PERMISSIVE | `private.es_miembro_de_organizacion(organizacion_id)` | `private.es_miembro_de_organizacion(organizacion_id)` |
+
+### `contacto_emergencia`
+
+| Policy | Command | Roles | Action | USING | WITH CHECK |
+|--------|---------|-------|--------|-------|------------|
+| `tenant_contacto_all` | ALL | authenticated | PERMISSIVE | `EXISTS (SELECT 1 FROM paciente p WHERE p.id = contacto_emergencia.paciente_id AND private.es_miembro_de_organizacion(p.organizacion_id))` | Igual que `USING` |
+
+### `region`
+
+| Policy | Command | Roles | Action | USING | WITH CHECK |
+|--------|---------|-------|--------|-------|------------|
+| `Lectura global region` | SELECT | authenticated | PERMISSIVE | `true` | — |
+
+### `comuna`
+
+| Policy | Command | Roles | Action | USING | WITH CHECK |
+|--------|---------|-------|--------|-------|------------|
+| `Lectura global comuna` | SELECT | authenticated | PERMISSIVE | `true` | — |
+
+> `region` y `comuna` son catálogos públicos: cualquier usuario autenticado los lee, sin filtro por organización.
 
 ### `ficha_clinica`
 
@@ -266,14 +325,15 @@ Sin política INSERT/UPDATE/DELETE y sin privilegios de escritura para `anon`/`a
 | Regla | Implementación |
 |-------|----------------|
 | Multi-tenancy (3FN) | Solo `usuario` y `paciente` llevan `organizacion_id`; el resto lo hereda por FK y RLS (`private.es_miembro_de_organizacion`). |
-| RUT válido y sin duplicados | `paciente.rut` (`text`, formato con puntos y guion) con `CHECK public.rut_valido(rut)` (módulo 11) y unicidad `(organizacion_id, rut normalizado)` sin importar el formato. |
+| RUT válido | `paciente.rut_numero` + `paciente.rut_dv` con `CHECK paciente_rut_valido_check (validar_rut_chileno(rut_numero, rut_dv))` (módulo 11). El RUT se guarda descompuesto, no como texto formateado. |
+| RUT sin duplicados | Índice único `paciente_org_rut_key` sobre `(organizacion_id, rut_numero, upper(rut_dv::text))`. La app traduce el error de duplicado (`traducirErrorPaciente`) a "Ya existe un paciente con ese RUT". |
 | Diagnóstico CIE-10 (3FN) | `atencion.diagnostico_cie10` es FK a `catalogo_cie10(codigo)`; el nombre solo vive en el catálogo. Carga inicial de 17 códigos podológicos; ampliable por carga masiva. |
 | Antecedentes (1FN) | `ficha_antecedente` (una fila por alergia, enfermedad base, medicamento o cirugía). `ficha_clinica.antecedentes` queda como nota general. |
 | Atención ↔ cita | `atencion.cita_id` (único, opcional). |
 | Sin doble reserva | `cita.duracion_min` + `cita.fecha_hora_fin` (calculada por trigger) y restricción de exclusión `cita_sin_solape` por profesional, ignorando citas canceladas o no asistidas. Error `23P01` en la app. |
 | Retención clínica | FK `ON DELETE RESTRICT` entre paciente, ficha, atención, derivación e imagen; baja lógica con `paciente.activo`. |
 | Hallazgos inmutables | Sin UPDATE/DELETE; corrección = fila nueva con `corrige_hallazgo_id`. |
-| Auditoría | Triggers en todas las tablas clínicas; guarda solo campos modificados y omite datos personales (solo registra los *nombres* de campos sensibles modificados). |
+| Auditoría | Triggers en `paciente`, `ficha_clinica`, `atencion`, `derivacion`, `cita`, `imagen_clinica` y `hallazgo_clinico`. Guarda solo los campos modificados y, de los sensibles, únicamente los *nombres*: `rut_numero`, `rut_dv`, `comuna_id`, nombre, apellidos, fecha de nacimiento, teléfono, email, dirección y los textos libres. `contacto_emergencia` no tiene trigger de auditoría. |
 
 
 Pendiente de diseño: `atencion.requiere_derivacion` es derivable de `derivacion` y de las reglas IWGDF (riesgo de desincronización); `rol`, `lado_pie` y `afeccion` usan `text` con CHECK en lugar de enums.
@@ -299,6 +359,8 @@ Todas son `SECURITY DEFINER` con `search_path` fijo. `anon` y PUBLIC no tienen E
 |-------|---------|---------|
 | `paciente`, `ficha_clinica`, `atencion`, `derivacion`, `cita`, `imagen_clinica`, `hallazgo_clinico` | `auditar_<tabla>` | AFTER INSERT / UPDATE / DELETE → `private.auditar_cambio()` |
 | `log_auditoria` | `log_auditoria_no_mutar` | BEFORE UPDATE / DELETE → `private.log_auditoria_inmutable()` |
+
+> `contacto_emergencia` **no** tiene trigger de auditoría: el alta, la modificación o el borrado del contacto de emergencia no quedan registrados en `log_auditoria` (el volcado de `pg_trigger` no muestra ninguno sobre esa tabla). Los catálogos `region` y `comuna` tampoco, pero al ser de solo lectura no aplica.
 
 
 ## Configuración pendiente (no versionable en SQL)
