@@ -1,9 +1,7 @@
-import { alertasBloqueantes, fechaLimiteControl, GRUPOS_IWGDF, type NivelRiesgo } from "@/lib/clinical-rules";
+import { alertasBloqueantes, ESTADOS_DERIVACION_ABIERTA, fechaLimiteControl, GRUPOS_IWGDF, type NivelRiesgo } from "@/lib/clinical-rules";
 import type { createClient } from "@/lib/supabase/server";
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
-
-const estadosDerivacionAbierta = ["pendiente", "enviada", "aceptada"];
 
 export type EstadoClinico = {
   nivel: NivelRiesgo;
@@ -34,7 +32,7 @@ export async function obtenerEstadoClinico(supabase: Supabase, pacienteIds?: str
     const [fichasRes, atencionesRes, derivacionesRes] = await Promise.all([
       supabase.from("ficha_clinica").select("id, paciente_id"),
       supabase.from("atencion").select("id, ficha_id, nivel_riesgo_iwgdf, created_at").order("created_at", { ascending: false }),
-      supabase.from("derivacion").select("atencion_id, motivo").in("estado", estadosDerivacionAbierta),
+      supabase.from("derivacion").select("atencion_id, motivo").in("estado", ESTADOS_DERIVACION_ABIERTA),
     ]);
 
     if (fichasRes.error || atencionesRes.error || derivacionesRes.error) return null;
@@ -51,7 +49,7 @@ export async function obtenerEstadoClinico(supabase: Supabase, pacienteIds?: str
     const fichaIds = fichas.map((f) => f.id);
     const [atencionesRes, derivacionesRes] = await Promise.all([
       supabase.from("atencion").select("id, ficha_id, nivel_riesgo_iwgdf, created_at").in("ficha_id", fichaIds).order("created_at", { ascending: false }),
-      supabase.from("derivacion").select("atencion_id, motivo").in("estado", estadosDerivacionAbierta),
+      supabase.from("derivacion").select("atencion_id, motivo").in("estado", ESTADOS_DERIVACION_ABIERTA),
     ]);
     if (atencionesRes.error || derivacionesRes.error) return null;
     atenciones = (atencionesRes.data as AtencionRow[]) ?? [];
