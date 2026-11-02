@@ -7,6 +7,7 @@ import { ClickTooltip } from "@/components/common/ClickTooltip";
 import { createClient } from "@/lib/supabase/server";
 import { FootModelViewer, type AtencionLineaTiempo } from "@/features/patients/FootModelViewer";
 import { PrintFichaButton } from "@/features/patients/PrintFichaButton";
+import { fechaClinica } from "@/lib/fechas";
 import type { HallazgoClinico } from "@/lib/types/hallazgos";
 import { formatearRut } from "@/lib/validations/patients";
 
@@ -24,17 +25,6 @@ const etiquetaAntecedente: Record<string, string> = {
   cirugia: "Cirugía",
   otro: "Otro",
 };
-
-function fechaClinica(fecha: string | null | undefined, incluirHora = false): string {
-  if (!fecha) return "Sin registro";
-  return new Intl.DateTimeFormat("es-CL", {
-    timeZone: "America/Santiago",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    ...(incluirHora ? { hour: "2-digit", minute: "2-digit" } : {}),
-  }).format(new Date(fecha));
-}
 
 function inicialesPaciente(nombre: string, apellido: string): string {
   return `${nombre.trim()[0] ?? ""}${apellido.trim()[0] ?? ""}`.toUpperCase();
@@ -198,7 +188,10 @@ export default async function PacientePage({ params }: { params: Promise<{ id: s
                       <span className="shrink-0 rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-600">{derivacion.estado}</span>
                     </div>
                     <p className="mt-2 text-sm leading-5 text-slate-600">{derivacion.motivo}</p>
-                    <p className="mt-2 text-xs text-slate-400">{fechaClinica(derivacion.created_at)}</p>
+                    <div className="mt-2 flex items-center justify-between gap-3">
+                      <p className="text-xs text-slate-400">{fechaClinica(derivacion.created_at)}</p>
+                      <Link className="print-hidden text-xs font-medium text-teal-700 hover:underline" href={`/patients/${id}/derivacion/${derivacion.id}`}>Ver carta</Link>
+                    </div>
                   </li>
                 ))}
               </ul>

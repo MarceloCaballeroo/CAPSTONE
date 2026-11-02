@@ -42,7 +42,7 @@ PodoCare resuelve este vacío con un sistema que no trata la seguridad como un a
 |---|---|---|
 | **Resumen** | `/dashboard` | Saludo y jornada del día, paciente en sala de espera o próximo, indicadores (citas, derivaciones abiertas, pacientes), seguimiento prioritario y distribución de riesgo IWGDF. |
 | **Pacientes** | `/patients` | Búsqueda por nombre o RUT, filtros por grupo de riesgo, alertas, control vencido o sin evaluación, y próximo control de cada paciente. |
-| **Ficha clínica** | `/patients/[id]` | Datos y consentimiento informado, atenciones, derivaciones y **mapa clínico del pie en 3D** con hallazgos versionados y correcciones. Permite imprimir la ficha. |
+| **Ficha clínica** | `/patients/[id]` | Datos y consentimiento informado, atenciones, derivaciones y **mapa clínico del pie en 3D** con hallazgos versionados y correcciones. Permite imprimir la ficha y la carta de cada derivación. |
 | **Agenda** | `/agenda` | Calendario semanal por profesional, cambio de estado con un toque y bloqueo de doble reserva. |
 | **Configuración** | `/configuracion` | Perfil, seguridad (contraseña, verificación en dos pasos, cierre de sesión global) y, para administradores, organización, equipo, ajustes de agenda y registro de actividad. |
 
@@ -489,6 +489,7 @@ Las pruebas usan el ejecutor integrado de Node (`node:test`) e importan los mód
 |---|---|
 | `src/lib/agenda.test.mjs` | Semana, zona horaria de Santiago y rangos de consulta. |
 | `src/lib/clinical-rules.test.mjs` | Frecuencias de control y lectura de alertas bloqueantes. |
+| `src/lib/derivacion.test.mjs` | Carta de derivación: nombre, motivos y diagnóstico. |
 | `src/lib/validations/configuracion.test.mjs` | Validación de los ajustes de agenda. |
 | `src/lib/types/hallazgos.test.mjs` | Hallazgos vigentes y correcciones. |
 
