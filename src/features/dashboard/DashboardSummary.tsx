@@ -7,6 +7,7 @@ import { EstadoChip } from "@/features/agenda/estados";
 import { avanzarFecha, convertirFechaHoraChileAISO, fechaClaveChile, fechaCortaChile, horaChile, zonaHorariaAgenda } from "@/lib/agenda";
 import { GRUPOS_IWGDF, textoControlSugerido, type NivelRiesgo } from "@/lib/clinical-rules";
 import { obtenerEstadoClinico } from "@/lib/estado-clinico";
+import { diasHasta, estadoSuscripcion, siguienteVencimiento } from "@/lib/suscripcion";
 import { createClient } from "@/lib/supabase/server";
 
 const estadosDerivacionAbierta = ["pendiente", "enviada", "aceptada"] as const;
@@ -25,7 +26,7 @@ export async function DashboardSummary() {
   const hoy = fechaClaveChile(new Date());
 
   const [perfil, pacientes, citasHoy, derivaciones, estados] = await Promise.all([
-    user ? supabase.from("usuario").select("nombre").eq("id", user.id).maybeSingle() : Promise.resolve({ data: null }),
+    user ? supabase.from("usuario").select("nombre, rol, organizacion:organizacion_id(suscripcion_hasta)").eq("id", user.id).maybeSingle() : Promise.resolve({ data: null }),
     supabase.from("paciente").select("id", { count: "exact", head: true }),
     supabase.from("cita").select("id, paciente_id, fecha_hora, estado, motivo_consulta")
       .gte("fecha_hora", convertirFechaHoraChileAISO(`${hoy}T00:00`))
@@ -60,6 +61,13 @@ export async function DashboardSummary() {
   const evaluados = estados?.size ?? 0;
   const nombreUsuario = (perfil.data?.nombre || user?.user_metadata?.nombre || "").split(/\s+/)[0];
 
+  const organizacion = perfil.data?.organizacion as unknown as { suscripcion_hasta: string | null } | null;
+  const esAdmin = perfil.data?.rol === "admin";
+  const hasta = organizacion?.suscripcion_hasta ?? null;
+  const estadoSuscripcionActual = estadoSuscripcion(hasta);
+  const dias = hasta ? diasHasta(hasta) : null;
+  const proximo = hasta ? siguienteVencimiento(hasta) : null;
+
   const indicadores: { icono: NombreIcono; valor: number; etiqueta: string; detalle: string; href?: string }[] = [
     { icono: "agenda", valor: citas.length, etiqueta: citas.length === 1 ? "cita hoy" : "citas hoy", detalle: `${atendidas} atendidas · ${citas.length - atendidas} por atender` },
     { icono: "derivacion", valor: derivaciones.count ?? 0, etiqueta: "derivaciones abiertas", detalle: "Pendientes, enviadas o aceptadas" },
@@ -82,6 +90,27 @@ export async function DashboardSummary() {
           <Link href="/agenda" className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-teal-700 px-4 text-sm font-medium text-white hover:bg-teal-800"><Icono nombre="mas" className="h-4 w-4" />Agendar cita</Link>
         </div>
       </header>
+
+      {esAdmin && hasta && (
+        <Card className={`flex flex-wrap items-center justify-between gap-3 px-5 py-4 ${estadoSuscripcionActual === "gracia" ? "border-amber-300 bg-amber-50" : ""}`}>
+          <div>
+            <p className="text-sm font-semibold text-slate-900">
+              Suscripción {estadoSuscripcionActual === "gracia" ? "en período de gracia" : "activa"} ·{" "}
+              {dias !== null && dias > 0
+                ? `quedan ${dias} ${dias === 1 ? "día" : "días"}`
+                : dias === 0
+                  ? "vence hoy"
+                  : `venció hace ${Math.abs(dias ?? 0)} ${Math.abs(dias ?? 0) === 1 ? "día" : "días"}`}
+            </p>
+            <p className="text-sm text-slate-600">
+              Vence el {fechaCortaChile(`${hasta}T12:00:00`)}. Si pagas ahora, queda hasta el {proximo ? fechaCortaChile(`${proximo}T12:00:00`) : "—"}: cada pago suma 30 días.
+            </p>
+          </div>
+          <Link href="/configuracion?seccion=organizacion" className="inline-flex min-h-11 items-center rounded-lg bg-teal-700 px-4 text-sm font-medium text-white hover:bg-teal-800">
+            Ver plan
+          </Link>
+        </Card>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
         {destacada ? (
