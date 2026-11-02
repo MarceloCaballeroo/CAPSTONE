@@ -4,6 +4,20 @@ export const ALERTA_INFECCION = 'Signos clínicos de infección activa detectado
 export const ALERTA_VASCULAR = 'Compromiso vascular periférico / sospecha de isquemia crítica.';
 const ALERTAS_BLOQUEANTES = [ALERTA_INFECCION, ALERTA_VASCULAR];
 
+// Especialidades a las que puede derivar el podólogo. La elige él; la regla solo sugiere el motivo.
+export const ESPECIALIDADES_DERIVACION = [
+  'Medicina General',
+  'Cirugía Vascular',
+  'Medicina General / Cirugía Vascular',
+] as const;
+
+export type EspecialidadDerivacion = (typeof ESPECIALIDADES_DERIVACION)[number];
+
+// Estados de la derivación. Solo pendiente, enviada y aceptada cuentan como abiertas.
+export const ESTADOS_DERIVACION = ['pendiente', 'enviada', 'aceptada', 'rechazada', 'completada'] as const;
+export type EstadoDerivacion = (typeof ESTADOS_DERIVACION)[number];
+export const ESTADOS_DERIVACION_ABIERTA = ['pendiente', 'enviada', 'aceptada'] as const;
+
 // Grupos IWGDF y frecuencia de control sugerida (meses: [mínimo, máximo]).
 export const GRUPOS_IWGDF: Record<NivelRiesgo, { grupo: number; nombre: string; define: string; controlMeses: [number, number] }> = {
   muy_bajo: { grupo: 0, nombre: 'Muy bajo', define: 'Sensibilidad conservada y sin signos de enfermedad arterial periférica.', controlMeses: [12, 12] },

@@ -5,12 +5,12 @@ import { Icono, type NombreIcono } from "@/components/common/Icono";
 import { RiesgoBadge, etiquetaRiesgo, estilosRiesgo } from "@/components/common/RiesgoBadge";
 import { EstadoChip } from "@/features/agenda/estados";
 import { avanzarFecha, convertirFechaHoraChileAISO, fechaClaveChile, fechaCortaChile, horaChile, zonaHorariaAgenda } from "@/lib/agenda";
-import { GRUPOS_IWGDF, textoControlSugerido, type NivelRiesgo } from "@/lib/clinical-rules";
+import { ESTADOS_DERIVACION_ABIERTA, GRUPOS_IWGDF, textoControlSugerido, type NivelRiesgo } from "@/lib/clinical-rules";
 import { obtenerEstadoClinico } from "@/lib/estado-clinico";
 import { diasHasta, estadoSuscripcion, siguienteVencimiento } from "@/lib/suscripcion";
 import { createClient } from "@/lib/supabase/server";
 
-const estadosDerivacionAbierta = ["pendiente", "enviada", "aceptada"] as const;
+const estadosDerivacionAbierta = ESTADOS_DERIVACION_ABIERTA;
 const niveles = Object.keys(GRUPOS_IWGDF) as NivelRiesgo[];
 
 function saludo(): string {

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { evaluarRiesgoYDerivacion } from "@/lib/clinical-rules";
+import { ESPECIALIDADES_DERIVACION, evaluarRiesgoYDerivacion } from "@/lib/clinical-rules";
 import { atencionSchema, type EstadoAtencion } from "@/lib/validations/atenciones";
 
 type ErrorSupabase = { message: string; code?: string; details?: string; hint?: string };
@@ -22,6 +22,8 @@ export async function guardarAtencion(_prev: EstadoAtencion, formData: FormData)
     antecedentesUlcera: formData.get("antecedentesUlcera") === "on",
     signosInfeccion: formData.get("signosInfeccion") === "on",
     dolorIsquemico: formData.get("dolorIsquemico") === "on",
+    procedimientoInvasivo: formData.get("procedimientoInvasivo") === "on",
+    especialidadDestino: formData.get("especialidadDestino") || undefined,
     observaciones: formData.get("observaciones") ?? "",
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Revisa los datos de la atención." };
@@ -61,6 +63,14 @@ export async function guardarAtencion(_prev: EstadoAtencion, formData: FormData)
     dolorIsquemico: parsed.data.dolorIsquemico,
   });
 
+  const especialidadDestino = parsed.data.especialidadDestino;
+  if (evaluacion.bloquearProcedimientoInvasivo && parsed.data.procedimientoInvasivo) {
+    return { error: "No puedes realizar procedimientos invasivos con signos de infección o compromiso vascular. Guarda solo la evaluación para generar la interconsulta." };
+  }
+  if (evaluacion.requiereDerivacion && (!especialidadDestino || !(ESPECIALIDADES_DERIVACION as readonly string[]).includes(especialidadDestino))) {
+    return { error: "Selecciona la especialidad de destino para la derivación." };
+  }
+
   const { data: atencion, error: errorAtencion } = await supabase
     .from("atencion")
     .insert({
@@ -82,7 +92,7 @@ export async function guardarAtencion(_prev: EstadoAtencion, formData: FormData)
     const { error: errorDerivacion } = await supabase.from("derivacion").insert({
       atencion_id: atencion.id,
       motivo: evaluacion.alertas.join(" | ") || "Riesgo IWGDF alto: úlcera previa o amputación.",
-      especialidad_destino: "Medicina General / Cirugía Vascular",
+      especialidad_destino: especialidadDestino!,
       estado: "pendiente",
     });
     if (errorDerivacion) {

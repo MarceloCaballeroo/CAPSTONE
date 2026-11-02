@@ -5,8 +5,11 @@ import { Button } from "@/components/common/Button";
 import { Card } from "@/components/common/Card";
 import { ClickTooltip } from "@/components/common/ClickTooltip";
 import { createClient } from "@/lib/supabase/server";
+import { EstadoDerivacionForm } from "@/features/patients/EstadoDerivacionForm";
 import { FootModelViewer, type AtencionLineaTiempo } from "@/features/patients/FootModelViewer";
 import { PrintFichaButton } from "@/features/patients/PrintFichaButton";
+import { ESTADOS_DERIVACION_ABIERTA } from "@/lib/clinical-rules";
+import { fechaClinica } from "@/lib/fechas";
 import type { HallazgoClinico } from "@/lib/types/hallazgos";
 import { formatearRut } from "@/lib/validations/patients";
 
@@ -25,17 +28,6 @@ const etiquetaAntecedente: Record<string, string> = {
   otro: "Otro",
 };
 
-function fechaClinica(fecha: string | null | undefined, incluirHora = false): string {
-  if (!fecha) return "Sin registro";
-  return new Intl.DateTimeFormat("es-CL", {
-    timeZone: "America/Santiago",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    ...(incluirHora ? { hour: "2-digit", minute: "2-digit" } : {}),
-  }).format(new Date(fecha));
-}
-
 function inicialesPaciente(nombre: string, apellido: string): string {
   return `${nombre.trim()[0] ?? ""}${apellido.trim()[0] ?? ""}`.toUpperCase();
 }
@@ -45,6 +37,35 @@ type ComunaRelacion = {
   nombre: string;
   region?: { id: number; nombre: string; ordinal?: string | null } | { id: number; nombre: string; ordinal?: string | null }[] | null;
 };
+
+type DerivacionFicha = {
+  id: string;
+  atencion_id: string;
+  motivo: string | null;
+  especialidad_destino: string | null;
+  estado: string;
+  created_at: string;
+  updated_at: string | null;
+};
+
+function DerivacionItem({ derivacion, pacienteId }: { derivacion: DerivacionFicha; pacienteId: string }) {
+  return (
+    <li className="py-4 first:pt-0 last:pb-0">
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-sm font-medium text-slate-900">{derivacion.especialidad_destino ?? "Sin especialidad"}</p>
+        <span className="shrink-0 rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-600">{derivacion.estado}</span>
+      </div>
+      <p className="mt-2 text-sm leading-5 text-slate-600">{derivacion.motivo ?? "Sin motivo registrado"}</p>
+      <div className="mt-2 flex items-center justify-between gap-3">
+        <p className="text-xs text-slate-400">{fechaClinica(derivacion.created_at)}</p>
+        <Link className="print-hidden text-xs font-medium text-teal-700 hover:underline" href={`/patients/${pacienteId}/derivacion/${derivacion.id}`}>Ver carta</Link>
+      </div>
+      <div className="mt-3">
+        <EstadoDerivacionForm key={`${derivacion.id}-${derivacion.estado}`} derivacionId={derivacion.id} pacienteId={pacienteId} estadoActual={derivacion.estado} />
+      </div>
+    </li>
+  );
+}
 
 export default async function PacientePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -77,6 +98,9 @@ export default async function PacientePage({ params }: { params: Promise<{ id: s
     : { data: [], error: null };
   const { data: imagenes } = atencionIds.length ? await supabase.from("imagen_clinica").select("id, etiqueta, area_cm2, created_at").in("atencion_id", atencionIds).order("created_at", { ascending: false }) : { data: [] };
   const { data: derivaciones } = atencionIds.length ? await supabase.from("derivacion").select("id, atencion_id, motivo, especialidad_destino, estado, created_at, updated_at").in("atencion_id", atencionIds).order("created_at", { ascending: false }) : { data: [] };
+  const esDerivacionAbierta = (estado: string) => (ESTADOS_DERIVACION_ABIERTA as readonly string[]).includes(estado);
+  const derivacionesAbiertas = (derivaciones ?? []).filter((derivacion) => esDerivacionAbierta(derivacion.estado));
+  const derivacionesCerradas = (derivaciones ?? []).filter((derivacion) => !esDerivacionAbierta(derivacion.estado));
   const usuarioIds = [...new Set((atenciones ?? []).map((atencion) => atencion.usuario_id).filter((usuarioId): usuarioId is string => Boolean(usuarioId)))];
   const { data: profesionales } = usuarioIds.length
     ? await supabase.from("usuario").select("id, nombre").in("id", usuarioIds)
@@ -190,18 +214,21 @@ export default async function PacientePage({ params }: { params: Promise<{ id: s
               <span className="text-xs text-slate-500">{derivaciones?.length ?? 0}</span>
             </div>
             {derivaciones?.length ? (
-              <ul className="mt-4 divide-y divide-slate-100">
-                {derivaciones.map((derivacion) => (
-                  <li className="py-4 first:pt-0 last:pb-0" key={derivacion.id}>
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="text-sm font-medium text-slate-900">{derivacion.especialidad_destino}</p>
-                      <span className="shrink-0 rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-600">{derivacion.estado}</span>
-                    </div>
-                    <p className="mt-2 text-sm leading-5 text-slate-600">{derivacion.motivo}</p>
-                    <p className="mt-2 text-xs text-slate-400">{fechaClinica(derivacion.created_at)}</p>
-                  </li>
-                ))}
-              </ul>
+              <div className="mt-4 grid gap-4">
+                {derivacionesAbiertas.length ? (
+                  <ul className="divide-y divide-slate-100">
+                    {derivacionesAbiertas.map((derivacion) => <DerivacionItem key={derivacion.id} derivacion={derivacion} pacienteId={id} />)}
+                  </ul>
+                ) : <p className="text-sm text-slate-500">No hay derivaciones abiertas.</p>}
+                {derivacionesCerradas.length > 0 && (
+                  <details className="border-t border-slate-100 pt-4">
+                    <summary className="cursor-pointer text-xs font-medium text-slate-500">Historial de derivaciones cerradas ({derivacionesCerradas.length})</summary>
+                    <ul className="mt-3 divide-y divide-slate-100">
+                      {derivacionesCerradas.map((derivacion) => <DerivacionItem key={derivacion.id} derivacion={derivacion} pacienteId={id} />)}
+                    </ul>
+                  </details>
+                )}
+              </div>
             ) : <p className="mt-4 text-sm text-slate-500">No hay derivaciones registradas.</p>}
           </Card>
 

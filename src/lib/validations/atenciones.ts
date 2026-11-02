@@ -12,6 +12,9 @@ export const atencionSchema = z.object({
   antecedentesUlcera: z.boolean(),
   signosInfeccion: z.boolean(),
   dolorIsquemico: z.boolean(),
+  procedimientoInvasivo: z.boolean().default(false),
+  // Se exige en la acción solo cuando la evaluación genera una derivación.
+  especialidadDestino: z.string().trim().optional(),
   observaciones: z.string().trim().max(2000, "Máximo 2000 caracteres"),
 });
 
