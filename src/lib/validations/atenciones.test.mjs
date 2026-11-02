@@ -29,3 +29,9 @@ test("rechaza observaciones de más de 2000 caracteres", () => {
   assert.equal(atencionSchema.safeParse({ ...base, observaciones: "x".repeat(2000) }).success, true);
   assert.equal(atencionSchema.safeParse({ ...base, observaciones: "x".repeat(2001) }).success, false);
 });
+
+test("el procedimiento invasivo es falso por defecto", () => {
+  const resultado = atencionSchema.safeParse(base);
+  assert.equal(resultado.success, true);
+  if (resultado.success) assert.equal(resultado.data.procedimientoInvasivo, false);
+});
