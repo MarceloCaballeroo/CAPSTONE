@@ -117,7 +117,7 @@ flowchart LR
 |---|---|---|---|
 | **Servidor** | `src/lib/supabase/server.ts` | Clave pública + cookies de la sesión del usuario | Casi todo: lecturas y escrituras. Respeta RLS. |
 | **Navegador** | `src/lib/supabase/client.ts` | Clave pública | Solo la verificación en dos pasos. |
-| **Administración** | `src/lib/supabase/admin.ts` | `service_role` (solo servidor) | Únicamente enviar invitaciones por correo. Nunca lee ni escribe tablas clínicas. |
+| **Administración** | `src/lib/supabase/admin.ts` | `service_role` (solo servidor) | Invitaciones por correo y confirmación de pagos de Webpay. Nunca lee ni escribe tablas clínicas. |
 
 Todas las lecturas y escrituras clínicas se hacen **como el usuario autenticado**, de modo que la base de datos decide qué filas puede ver o modificar.
 
@@ -129,7 +129,7 @@ Todas las lecturas y escrituras clínicas se hacen **como el usuario autenticado
 | Pacientes | `paciente`, `ficha_clinica`, `atencion`, `derivacion` | `paciente`, `ficha_clinica` |
 | Ficha del paciente | `paciente`, `ficha_clinica`, `atencion`, `derivacion`, `hallazgo_clinico`, `imagen_clinica` | `atencion`, `derivacion`, `hallazgo_clinico` |
 | Agenda | `cita`, `paciente`, `usuario` | `cita` |
-| Configuración | `usuario`, `organizacion`, `log_auditoria` | `usuario`, `organizacion` (mediante funciones) |
+| Configuración | `usuario`, `organizacion`, `log_auditoria` | `usuario`, `organizacion` (mediante funciones), `pago` |
 
 ### Funciones de base de datos que la aplicación invoca
 
@@ -171,6 +171,14 @@ sequenceDiagram
 2. **Confirmación:** `/auth/confirm` verifica el token y llama a `crear_organizacion_inicial`, que crea la organización y deja al usuario como administrador.
 3. **Invitación:** un administrador (plan clínica) envía la invitación desde Configuración. El servidor usa la clave de servicio **solo** para enviar el correo y luego asocia al invitado con `invitar_a_organizacion`, con la sesión del administrador.
 
+### Flujo: pagar la suscripción
+
+1. **Pago:** el administrador entra a Configuración → Organización y plan y elige un plan. El monto se calcula en el servidor (USD a CLP y, en el plan clínica, por profesional activo).
+2. **Webpay:** la Server Action registra el intento en `pago` y crea la transacción con la API REST de Webpay Plus; el navegador pasa al formulario de Transbank.
+3. **Retorno:** `/api/webpay/retorno` confirma el token, verifica que el monto y la orden coincidan y, si se aprobó, fija `organizacion.suscripcion_hasta` en 30 días desde el vencimiento actual o desde hoy, el que sea mayor.
+4. **Avisos:** un cron diario escribe a los administradores desde el vencimiento hasta el quinto día de gracia; `ultimo_aviso` evita repetir el aviso el mismo día.
+5. **Bloqueo:** al sexto día, el proxy redirige cualquier ruta a Configuración hasta que se pague.
+
 ---
 
 ## Modelo de datos
@@ -180,6 +188,7 @@ erDiagram
     AUTH_USERS ||--|| USUARIO : "cuenta de acceso"
     ORGANIZACION ||--o{ USUARIO : "agrupa"
     ORGANIZACION ||--o{ PACIENTE : "es dueña de"
+    ORGANIZACION ||--o{ PAGO : "cobra"
     PACIENTE ||--|| FICHA_CLINICA : "tiene"
     FICHA_CLINICA ||--o{ FICHA_ANTECEDENTE : "detalla"
     FICHA_CLINICA ||--o{ ATENCION : "registra"
@@ -195,11 +204,23 @@ erDiagram
     HALLAZGO_CLINICO |o--o{ HALLAZGO_CLINICO : "corrige"
     USUARIO |o--o{ LOG_AUDITORIA : "origina"
 
+    PAGO {
+        uuid id PK
+        uuid organizacion_id FK
+        text buy_order "unica"
+        text token "unico"
+        int monto_clp
+        text plan "individual o clinica"
+        text estado "pendiente, pagado, rechazado o abortado"
+        timestamptz fecha_pago
+    }
+
     ORGANIZACION {
         uuid id PK
         text nombre
         text plan_tipo "individual o clinica"
         text estado_suscripcion
+        date suscripcion_hasta
         smallint jornada_inicio
         smallint jornada_fin
         smallint duracion_cita_min
@@ -433,9 +454,15 @@ La aplicación calcula con estas frecuencias el próximo control de cada pacient
    | `NEXT_PUBLIC_SUPABASE_URL` | Sí | URL del proyecto de Supabase. |
    | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Sí | Clave pública (apta para el navegador). |
    | `NEXT_PUBLIC_SITE_URL` | Recomendada | URL pública del sitio, usada en los enlaces de los correos. Por ejemplo `http://localhost:3000`. |
-   | `SUPABASE_SERVICE_ROLE_KEY` | No | Clave de servicio. **Solo servidor y sin prefijo `NEXT_PUBLIC_`.** Habilita invitar profesionales. |
+   | `SUPABASE_SERVICE_ROLE_KEY` | No | Clave de servicio. **Solo servidor y sin prefijo `NEXT_PUBLIC_`.** Habilita invitaciones, confirmación de pagos y avisos. |
+   | `WEBPAY_AMBIENTE` | No | `integracion` (por defecto) o `produccion`. |
+   | `WEBPAY_COMERCIO` | No | Código de comercio de Webpay. Por defecto, el de integración. |
+   | `WEBPAY_LLAVE` | No | Llave de Webpay. Por defecto, la de integración. |
+   | `BREVO_API_KEY` | No | Clave de la API de Brevo para los correos de aviso. Sin ella, el correo se escribe en la consola. |
+   | `EMAIL_FROM` | Recomendada | Remitente verificado en Brevo. |
+   | `CRON_SECRET` | Recomendada | Protege `/api/cron/avisos`; Vercel lo envía como `Bearer`. |
 
-   Agrega `NEXT_PUBLIC_SITE_URL` a las URLs de redirección permitidas en **Authentication → URL Configuration** del panel de Supabase.
+   Agrega `NEXT_PUBLIC_SITE_URL` a las URLs de redirección permitidas en **Authentication → URL Configuration** del panel de Supabase. En producción debe ser la URL pública: Webpay vuelve a `${NEXT_PUBLIC_SITE_URL}/api/webpay/retorno`.
 
 3. **Ejecutar en modo desarrollo:**
 
@@ -456,7 +483,7 @@ La aplicación calcula con estas frecuencias el próximo control de cada pacient
    docker compose down                              # detener
    ```
 
-   > `docker-compose.yml` solo entrega al contenedor las dos variables públicas de Supabase. Si necesitas invitar profesionales desde el contenedor, agrega también `SUPABASE_SERVICE_ROLE_KEY`.
+   > `docker-compose.yml` solo entrega al contenedor las dos variables públicas de Supabase. Para invitaciones, pagos y avisos dentro del contenedor, agrega también `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SITE_URL`, las `WEBPAY_*`, `BREVO_API_KEY`, `EMAIL_FROM` y `CRON_SECRET`.
 
 ### Base de datos
 
@@ -468,6 +495,7 @@ La aplicación espera encontrar:
 - Las funciones listadas en [Funciones de base de datos que la aplicación invoca](#funciones-de-base-de-datos-que-la-aplicación-invoca).
 - Triggers de auditoría sobre las tablas clínicas, `usuario` y `organizacion`, y la bitácora `log_auditoria` inmutable.
 - Row Level Security activo en todas las tablas.
+- Un bucket público `branding` en Storage con `podocare-sello.png`, usado por el correo de aviso.
 
 ### Comandos útiles
 
@@ -489,6 +517,7 @@ Las pruebas usan el ejecutor integrado de Node (`node:test`) e importan los mód
 |---|---|
 | `src/lib/agenda.test.mjs` | Semana, zona horaria de Santiago y rangos de consulta. |
 | `src/lib/clinical-rules.test.mjs` | Frecuencias de control y lectura de alertas bloqueantes. |
+| `src/lib/suscripcion.test.mjs` | Estados de suscripción, días de gracia y suma de 30 días. |
 | `src/lib/validations/configuracion.test.mjs` | Validación de los ajustes de agenda. |
 | `src/lib/types/hallazgos.test.mjs` | Hallazgos vigentes y correcciones. |
 
@@ -506,6 +535,9 @@ El flujo de integración continua (`.github/workflows/ci.yml`) se ejecuta en cad
 - **Frontend:** Vercel, con las variables de entorno de la tabla anterior configuradas para *Production* y *Preview*.
 - **Backend:** Supabase Cloud.
 - **Correos de invitación:** en **Authentication → Email Templates → Invite user**, el enlace debe apuntar a `/auth/confirm` con `type=invite` y `next=/update-password`.
+- **Correos de aviso:** `BREVO_API_KEY` y un `EMAIL_FROM` verificado en Brevo. El sello se sirve desde el bucket público `branding` de Supabase Storage.
+- **Cron:** `vercel.json` agenda `/api/cron/avisos` todos los días a las 12:00 UTC; requiere `CRON_SECRET`.
+- **Webpay:** por defecto usa el ambiente de integración. En producción, define `WEBPAY_AMBIENTE=produccion` y las credenciales reales del comercio.
 - **Variable de servicio:** `SUPABASE_SERVICE_ROLE_KEY` debe guardarse como secreto del servidor y nunca exponerse al navegador.
 
 ---
