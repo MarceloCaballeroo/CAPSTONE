@@ -5,7 +5,11 @@ import { Alert } from "@/components/common/Alert";
 import { Card } from "@/components/common/Card";
 import { DosPasos } from "@/features/configuracion/DosPasos";
 import { InvitarForm, MiembroControles, OrganizacionForm, PasswordForm, PerfilForm } from "@/features/configuracion/Formularios";
+import { PagarPlan } from "@/features/configuracion/PagarPlan";
+import { ProbarCorreo } from "@/features/configuracion/ProbarCorreo";
 import { fechaCortaChile, zonaHorariaAgenda } from "@/lib/agenda";
+import { PLANES, montoClp } from "@/lib/planes";
+import { DIAS_GRACIA, diasHasta, estadoSuscripcion, siguienteVencimiento } from "@/lib/suscripcion";
 import { createClient } from "@/lib/supabase/server";
 
 const secciones = [
@@ -42,16 +46,16 @@ function detalleAuditoria(tabla: string, detalle: { datos_nuevos?: Fila; datos_a
 
 const fechaHora = new Intl.DateTimeFormat("es-CL", { timeZone: zonaHorariaAgenda, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 
-export default async function ConfiguracionPage({ searchParams }: { searchParams: Promise<{ seccion?: string }> }) {
+export default async function ConfiguracionPage({ searchParams }: { searchParams: Promise<{ seccion?: string; pago?: string; bloqueada?: string }> }) {
   const parametros = await searchParams;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
   const { data: perfil } = await supabase.from("usuario")
-    .select("nombre, rol, activo, created_at, organizacion:organizacion_id(nombre, plan_tipo, estado_suscripcion, jornada_inicio, jornada_fin, duracion_cita_min, dias_atencion)")
+    .select("nombre, rol, activo, created_at, organizacion_id, organizacion:organizacion_id(nombre, plan_tipo, estado_suscripcion, suscripcion_hasta, jornada_inicio, jornada_fin, duracion_cita_min, dias_atencion)")
     .eq("id", user.id).maybeSingle();
-  const organizacion = perfil?.organizacion as unknown as { nombre: string; plan_tipo: string; estado_suscripcion: string | null; jornada_inicio: number; jornada_fin: number; duracion_cita_min: number; dias_atencion: number[] } | null;
+  const organizacion = perfil?.organizacion as unknown as { nombre: string; plan_tipo: string; estado_suscripcion: string | null; suscripcion_hasta: string | null; jornada_inicio: number; jornada_fin: number; duracion_cita_min: number; dias_atencion: number[] } | null;
   const esAdmin = perfil?.rol === "admin" && perfil.activo;
   const visibles = secciones.filter((seccion) => !seccion.admin || esAdmin);
   const seccion: Seccion = visibles.some((item) => item.clave === parametros.seccion) ? parametros.seccion as Seccion : "perfil";
@@ -61,6 +65,38 @@ export default async function ConfiguracionPage({ searchParams }: { searchParams
     nombre: organizacion.nombre, jornadaInicio: organizacion.jornada_inicio, jornadaFin: organizacion.jornada_fin,
     duracion: organizacion.duracion_cita_min, dias: organizacion.dias_atencion,
   };
+
+  const estado = estadoSuscripcion(organizacion?.suscripcion_hasta);
+  const estadoUi = {
+    activa: { etiqueta: "Activa", clase: "bg-emerald-50 text-emerald-800" },
+    gracia: { etiqueta: "En período de gracia", clase: "bg-amber-50 text-amber-800" },
+    bloqueada: { etiqueta: "Vencida", clase: "bg-red-50 text-red-800" },
+  }[estado];
+
+  const dias = organizacion?.suscripcion_hasta ? diasHasta(organizacion.suscripcion_hasta) : null;
+  const proximo = organizacion?.suscripcion_hasta ? siguienteVencimiento(organizacion.suscripcion_hasta) : null;
+
+  let profesionalesActivos = 1;
+  if (seccion === "organizacion" && perfil?.organizacion_id) {
+    const { count } = await supabase.from("usuario").select("id", { count: "exact", head: true }).eq("organizacion_id", perfil.organizacion_id).eq("activo", true);
+    profesionalesActivos = Math.max(1, count ?? 1);
+  }
+
+  const mensajePago = parametros.pago === "ok"
+    ? { variant: "success" as const, texto: "Pago aprobado. La suscripción quedó activa por 30 días." }
+    : parametros.pago === "rechazado"
+      ? { variant: "danger" as const, texto: "Webpay rechazó el pago. No se realizó ningún cargo." }
+      : parametros.pago === "abortado"
+        ? { variant: "danger" as const, texto: "Cancelaste el pago antes de terminarlo." }
+        : parametros.pago === "error_config"
+          ? { variant: "danger" as const, texto: "Falta configurar la clave de servicio en el servidor." }
+          : parametros.pago === "error_webpay"
+            ? { variant: "danger" as const, texto: "No pudimos confirmar el pago con Webpay. Revisa tu cartola antes de reintentar." }
+            : parametros.pago
+              ? { variant: "danger" as const, texto: "El pago se aprobó, pero no pudimos actualizar la suscripción. Escríbenos." }
+              : parametros.bloqueada === "1"
+                ? { variant: "danger" as const, texto: "La suscripción venció hace más de 5 días. Paga para reactivar el acceso." }
+                : null;
 
   const miembros = seccion === "equipo" ? await supabase.rpc("miembros_organizacion") : null;
   const actividad = seccion === "actividad"
@@ -95,6 +131,7 @@ export default async function ConfiguracionPage({ searchParams }: { searchParams
         </nav>
 
         <div className="grid min-w-0 gap-4">
+          {mensajePago && <Alert variant={mensajePago.variant}>{mensajePago.texto}</Alert>}
           {seccion === "perfil" && (
             <Card className="grid gap-5">
               <div><h2 className="text-xl font-semibold text-slate-900">Mi perfil</h2><p className="mt-1 text-sm text-slate-500">Así te ven tus colegas en la agenda y en el registro de atenciones.</p></div>
@@ -132,16 +169,59 @@ export default async function ConfiguracionPage({ searchParams }: { searchParams
                 <OrganizacionForm datos={datosOrganizacion} seccion="datos" />
               </Card>
               <Card className="grid gap-4">
-                <h2 className="text-lg font-semibold text-slate-900">Plan y suscripción</h2>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-semibold text-slate-900">Plan y suscripción</h2>
+                    <p className="mt-1 text-sm text-slate-500">Cada pago suma 30 días desde tu vencimiento actual.</p>
+                  </div>
+                  <span className={`rounded-md px-2.5 py-1 text-xs font-semibold ${estadoUi.clase}`}>{estadoUi.etiqueta}</span>
+                </div>
+                {organizacion.suscripcion_hasta && (
+                  <div className="grid gap-1 text-sm text-slate-700">
+                    <p>
+                      Vence el <b>{fechaCortaChile(`${organizacion.suscripcion_hasta}T12:00:00`)}</b>
+                      {dias !== null && dias > 0 && ` · ${dias === 1 ? "queda 1 día" : `quedan ${dias} días`}`}
+                      {dias === 0 && " · vence hoy"}
+                      {dias !== null && dias < 0 && ` · venció hace ${Math.abs(dias)} ${Math.abs(dias) === 1 ? "día" : "días"}`}
+                    </p>
+                    {estado === "gracia" && dias !== null && (
+                      <p className="text-amber-800">
+                        Te quedan {DIAS_GRACIA + dias} {DIAS_GRACIA + dias === 1 ? "día" : "días"} de acceso antes del bloqueo.
+                      </p>
+                    )}
+                    {estado === "bloqueada" && (
+                      <p className="text-red-800">El acceso está bloqueado. Paga para reactivarlo.</p>
+                    )}
+                    {proximo && (
+                      <p className="text-slate-500">
+                        Si pagas ahora, tu suscripción queda hasta el <b>{fechaCortaChile(`${proximo}T12:00:00`)}</b>: se suman 30 días.
+                      </p>
+                    )}
+                  </div>
+                )}
                 <ul className="grid gap-3 sm:grid-cols-2">
-                  {[["clinica", "Plan clínica", "Varios profesionales, roles y agenda compartida."], ["individual", "Plan individual", "Un profesional. No permite agregar usuarios."]].map(([clave, nombre, descripcion]) => (
-                    <li key={clave} className={`grid gap-1 rounded-lg p-4 ${organizacion.plan_tipo === clave ? "border-2 border-teal-700 bg-teal-50" : "border border-slate-200"}`}>
-                      <span className="flex items-center justify-between font-semibold text-slate-900">{nombre}{organizacion.plan_tipo === clave && <span className="rounded-full bg-teal-700 px-2 py-0.5 text-xs text-white">Actual</span>}</span>
-                      <span className="text-sm text-slate-600">{descripcion}</span>
-                    </li>
-                  ))}
+                  {PLANES.map((plan) => {
+                    const monto = montoClp(plan.id, profesionalesActivos);
+                    return (
+                      <li key={plan.id} className={`grid gap-1 rounded-lg p-4 ${organizacion.plan_tipo === plan.id ? "border-2 border-teal-700 bg-teal-50" : "border border-slate-200"}`}>
+                        <span className="flex items-center justify-between font-semibold text-slate-900">{plan.nombre}{organizacion.plan_tipo === plan.id && <span className="rounded-full bg-teal-700 px-2 py-0.5 text-xs text-white">Actual</span>}</span>
+                        <span className="text-sm text-slate-600">{plan.detalle}</span>
+                        <span className="text-sm font-semibold text-slate-900">
+                          ${monto.toLocaleString("es-CL")}{plan.id === "clinica" && ` · ${profesionalesActivos} ${profesionalesActivos === 1 ? "profesional activo" : "profesionales activos"}`}
+                        </span>
+                        {esAdmin && (plan.id === "individual" && profesionalesActivos > 1
+                          ? <p className="mt-2 text-xs text-slate-500">Requiere 1 profesional activo. Desactiva o quita al resto para usar este plan.</p>
+                          : <PagarPlan plan={plan.id} monto={monto} />)}
+                      </li>
+                    );
+                  })}
                 </ul>
-                <p className="text-sm text-slate-700">Suscripción: <b>{organizacion.estado_suscripcion ?? "sin información"}</b></p>
+                {esAdmin && (
+                  <div className="border-t border-slate-200 pt-4">
+                    <p className="text-sm text-slate-500">Los avisos de vencimiento se envían por correo a los administradores.</p>
+                    <div className="mt-2"><ProbarCorreo /></div>
+                  </div>
+                )}
               </Card>
             </>
           )}

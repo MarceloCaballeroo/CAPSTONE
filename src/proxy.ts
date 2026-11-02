@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
+import { estadoSuscripcion } from '@/lib/suscripcion';
 
 export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -32,6 +33,8 @@ export async function proxy(request: NextRequest) {
     '/recover-password',
     '/update-password',
     '/auth/confirm',
+    '/api/webpay/retorno',
+    '/api/cron/avisos',
   ];
   const isPublicRoute = publicRoutes.includes(request.nextUrl.pathname);
 
@@ -62,6 +65,18 @@ export async function proxy(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = '/dashboard';
     return NextResponse.redirect(url);
+  }
+
+  // Suscripción vencida hace más de 5 días: solo queda Configuración para pagar.
+  const path = request.nextUrl.pathname;
+  if (user && !isPublicRoute && path !== verificarPath && !path.startsWith('/configuracion') && !path.startsWith('/api')) {
+    const { data } = await supabase.from('organizacion').select('suscripcion_hasta').limit(1).maybeSingle();
+    if (estadoSuscripcion(data?.suscripcion_hasta) === 'bloqueada') {
+      const url = request.nextUrl.clone();
+      url.pathname = '/configuracion';
+      url.search = '?seccion=organizacion&bloqueada=1';
+      return NextResponse.redirect(url);
+    }
   }
 
   return supabaseResponse;

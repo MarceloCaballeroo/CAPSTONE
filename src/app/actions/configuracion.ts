@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { enviarCorreo } from "@/lib/email";
 import type { FormState } from "@/lib/types/auth";
 import { actualizarPasswordSchema } from "@/lib/validations/auth";
 import { invitacionSchema, miembroSchema, organizacionSchema, perfilSchema } from "@/lib/validations/configuracion";
@@ -141,4 +142,23 @@ export async function invitarProfesionalAction(_prev: FormState, formData: FormD
 
   revalidatePath("/configuracion");
   return { success: true, mensaje: `Invitación enviada a ${parsed.data.email}.` };
+}
+
+export async function probarCorreoAction(): Promise<FormState> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user?.email) return sesionExpirada;
+
+  try {
+    const resultado = await enviarCorreo({
+      para: user.email,
+      asunto: "Prueba de correo de PodoCare",
+      texto: "Este es un correo de prueba. Si lo recibes, los avisos de suscripción están configurados.\n\nPodoCare",
+    });
+    return resultado === "consola"
+      ? { success: true, mensaje: "Sin proveedor configurado: el correo se escribió en la consola del servidor." }
+      : { success: true, mensaje: `Correo enviado a ${user.email}. Revisa tu bandeja y el spam.` };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "No pudimos enviar el correo." };
+  }
 }

@@ -194,8 +194,30 @@
 | `nombre` | `text` |  |
 | `plan_tipo` | `text` |  |
 | `estado_suscripcion` | `text` |  |
+| `suscripcion_hasta` | `date` |  Nullable; por defecto hoy (Chile) + 30 días |
+| `ultimo_aviso` | `date` |  Nullable; último día en que el cron avisó |
 | `created_at` | `timestamptz` |  |
 | `updated_at` | `timestamptz` |  |
+
+## Table `pago`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `id` | `uuid` | Primary |
+| `organizacion_id` | `uuid` | FK `organizacion(id)`, `ON DELETE RESTRICT` |
+| `buy_order` | `text` | Único (máximo 26 caracteres en Webpay) |
+| `token` | `text` | Único |
+| `monto_clp` | `int` | `> 0` |
+| `plan` | `text` | `individual` o `clinica` |
+| `profesionales` | `int` | `> 0`, por defecto 1 |
+| `estado` | `text` | `pendiente`, `pagado`, `rechazado`, `abortado` |
+| `autorizacion` | `text` |  Nullable |
+| `fecha_pago` | `timestamptz` |  Nullable |
+| `created_at` | `timestamptz` |  |
+
+> Bitácora de cobros de Webpay Plus. El usuario autenticado solo inserta filas en `pendiente` y lee las de su organización (si es admin activo); la confirmación (`pagado`) la escribe el retorno con `service_role`. No tiene trigger de auditoría: la evidencia queda en `autorizacion` + `fecha_pago`.
 
 ## Custom Types / Enums
 
@@ -233,6 +255,13 @@
 | Policy | Command | Roles | Action | USING | WITH CHECK |
 |--------|---------|-------|--------|-------|------------|
 | `tenant_organizacion_select` | SELECT | authenticated | PERMISSIVE | `private.es_miembro_de_organizacion(id)` | — |
+
+### `pago`
+
+| Policy | Command | Roles | Action | USING | WITH CHECK |
+|--------|---------|-------|--------|-------|------------|
+| `tenant_pago_select` | SELECT | authenticated | PERMISSIVE | Miembro de la organización **y** admin activo | — |
+| `tenant_pago_insert` | INSERT | authenticated | PERMISSIVE | — | Miembro **y** admin activo, con `estado = 'pendiente'`, `fecha_pago` y `autorizacion` nulos |
 
 ### `paciente`
 
@@ -323,6 +352,7 @@ Sin política INSERT/UPDATE/DELETE y sin privilegios de escritura para `anon`/`a
 | Regla | Implementación |
 |-------|----------------|
 | Multi-tenancy (3FN) | Solo `usuario` y `paciente` llevan `organizacion_id`; el resto lo hereda por FK y RLS (`private.es_miembro_de_organizacion`). |
+| Suscripción | `organizacion.suscripcion_hasta` es la fuente de verdad (30 días por pago); `estado_suscripcion` queda como dato heredado. `pago` registra cada intento y el retorno de Webpay lo confirma con `service_role`. |
 | RUT válido | `paciente.rut_numero` + `paciente.rut_dv` con `CHECK paciente_rut_valido_check (validar_rut_chileno(rut_numero, rut_dv))` (módulo 11). El RUT se guarda descompuesto, no como texto formateado. |
 | RUT sin duplicados | Índice único `paciente_org_rut_key` sobre `(organizacion_id, rut_numero, upper(rut_dv::text))`. La app traduce el error de duplicado (`traducirErrorPaciente`) a "Ya existe un paciente con ese RUT". |
 | Diagnóstico CIE-10 (3FN) | `atencion.diagnostico_cie10` es FK a `catalogo_cie10(codigo)`; el nombre solo vive en el catálogo. Carga inicial de 17 códigos podológicos; ampliable por carga masiva. |
@@ -345,6 +375,8 @@ Todas son `SECURITY DEFINER` con `search_path` fijo. `anon` y PUBLIC no tienen E
 | `public.crear_organizacion_inicial(nombre_organizacion text, nombre_usuario text, plan text default 'individual') → uuid` | authenticated | Requiere sesión; valida `plan` (`individual` / `clinica`); usa advisory lock y es idempotente. Crea la organización y el usuario admin. |
 | `public.invitar_a_organizacion(usuario_invitado uuid, nombre_usuario text, rol_asignado text default 'clinico')` | authenticated | Solo admin activo; la organización debe tener plan `clinica`. Agrega un usuario a la organización del admin. |
 | `public.admin_actualizar_usuario(objetivo uuid, nuevo_rol text default null, nuevo_activo boolean default null)` | authenticated | Solo admin activo; no puede modificarse a sí mismo; rol en (`admin`, `clinico`); solo actúa sobre usuarios de su organización. |
+| `public.admin_actualizar_organizacion(nuevo_nombre text, inicio smallint, fin smallint, duracion smallint, dias smallint[])` | authenticated | Solo admin activo; actualiza nombre y agenda de su organización. No toca `suscripcion_hasta`. |
+| `public.miembros_organizacion()` | authenticated | Solo admin activo; lista al equipo con su correo (leído de Auth). |
 | `public.handle_new_user()` | nadie (trigger) | Placeholder: retorna `NEW`. El alta de `usuario` la hace `crear_organizacion_inicial`. |
 | `private.auditar_cambio()` | nadie (trigger) | Escribe en `log_auditoria` tras INSERT/UPDATE/DELETE. |
 | `private.log_auditoria_inmutable()` | nadie (trigger) | Lanza excepción ante UPDATE/DELETE en `log_auditoria`. |
@@ -359,8 +391,12 @@ Todas son `SECURITY DEFINER` con `search_path` fijo. `anon` y PUBLIC no tienen E
 | `log_auditoria` | `log_auditoria_no_mutar` | BEFORE UPDATE / DELETE → `private.log_auditoria_inmutable()` |
 
 > `contacto_emergencia` **no** tiene trigger de auditoría: el alta, la modificación o el borrado del contacto de emergencia no quedan registrados en `log_auditoria` (el volcado de `pg_trigger` no muestra ninguno sobre esa tabla). Los catálogos `region` y `comuna` tampoco, pero al ser de solo lectura no aplica.
+>
+> `pago` tampoco tiene trigger de auditoría: la confirmación la escribe `service_role` (sin `auth.uid()`) y la evidencia queda en `autorizacion` + `fecha_pago`.
 
 
 ## Configuración pendiente (no versionable en SQL)
 
 - Activar *Prevent use of leaked passwords* en Supabase Auth (puede requerir plan de pago).
+- Bucket público `branding` en Supabase Storage con `podocare-sello.png` (sello del correo de aviso).
+- Otorgar a `service_role` `select` en `usuario`, `select` y `update` en `organizacion`, y `all` en `pago`: el proyecto no hereda permisos por defecto para esa clave.
