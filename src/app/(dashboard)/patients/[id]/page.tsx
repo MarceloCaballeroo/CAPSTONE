@@ -8,6 +8,8 @@ import { createClient } from "@/lib/supabase/server";
 import { EstadoDerivacionForm } from "@/features/patients/EstadoDerivacionForm";
 import { FootModelViewer, type AtencionLineaTiempo } from "@/features/patients/FootModelViewer";
 import { PrintFichaButton } from "@/features/patients/PrintFichaButton";
+import { ImagenAtencionForm } from "@/features/patients/ImagenAtencionForm";
+import { esRutaImagenClinica } from "@/lib/validations/imagenes";
 import { ESTADOS_DERIVACION_ABIERTA } from "@/lib/clinical-rules";
 import { fechaClinica } from "@/lib/fechas";
 import type { HallazgoClinico } from "@/lib/types/hallazgos";
@@ -70,6 +72,7 @@ function DerivacionItem({ derivacion, pacienteId }: { derivacion: DerivacionFich
 export default async function PacientePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
   const { data: paciente, error: pacienteError } = await supabase
     .from("paciente")
     .select("*")
@@ -96,7 +99,8 @@ export default async function PacientePage({ params }: { params: Promise<{ id: s
   const { data: hallazgos, error: errorHallazgos } = atencionIds.length
     ? await supabase.from("hallazgo_clinico").select("id, atencion_id, corrige_hallazgo_id, lado_pie, coordenada_x, coordenada_y, coordenada_z, normal_x, normal_y, normal_z, modelo_version, afeccion, intensidad_dolor, created_at").in("atencion_id", atencionIds).order("created_at", { ascending: true })
     : { data: [], error: null };
-  const { data: imagenes } = atencionIds.length ? await supabase.from("imagen_clinica").select("id, etiqueta, area_cm2, created_at").in("atencion_id", atencionIds).order("created_at", { ascending: false }) : { data: [] };
+  const { data: imagenes, error: errorImagenes } = atencionIds.length ? await supabase.from("imagen_clinica").select("id, atencion_id, url_storage, etiqueta, area_cm2, created_at").in("atencion_id", atencionIds).order("created_at", { ascending: false }) : { data: [], error: null };
+  const atencionesPropias = (atenciones ?? []).filter((atencion) => atencion.usuario_id === user?.id);
   const { data: derivaciones } = atencionIds.length ? await supabase.from("derivacion").select("id, atencion_id, motivo, especialidad_destino, estado, created_at, updated_at").in("atencion_id", atencionIds).order("created_at", { ascending: false }) : { data: [] };
   const esDerivacionAbierta = (estado: string) => (ESTADOS_DERIVACION_ABIERTA as readonly string[]).includes(estado);
   const derivacionesAbiertas = (derivaciones ?? []).filter((derivacion) => esDerivacionAbierta(derivacion.estado));
@@ -234,11 +238,20 @@ export default async function PacientePage({ params }: { params: Promise<{ id: s
 
           <Card>
             <h2 className="font-semibold text-slate-900">Imágenes clínicas</h2>
-            {imagenes?.length ? (
+            {errorImagenes ? <Alert>No pudimos cargar las imágenes de las consultas. Inténtalo nuevamente.</Alert> : imagenes?.length ? (
               <ul className="mt-3 divide-y divide-slate-100">
-                {imagenes.map((imagen) => <li className="flex items-center justify-between gap-3 py-3 text-sm" key={imagen.id}><span className="min-w-0 truncate text-slate-700">{imagen.etiqueta || "Imagen clínica"}</span><span className="shrink-0 text-xs text-slate-400">{fechaClinica(imagen.created_at)}</span></li>)}
+                {imagenes.map((imagen) => <li className="grid gap-1 py-3 text-sm" key={imagen.id}>
+                  {esRutaImagenClinica(imagen.url_storage, imagen.atencion_id, imagen.id)
+                    ? <a className="font-medium text-teal-700 underline" href={`/api/imagenes/${imagen.id}`} target="_blank" rel="noreferrer">{imagen.etiqueta || "Abrir imagen clínica"}</a>
+                    : <span className="text-slate-700">{imagen.etiqueta || "Imagen clínica"} (archivo anterior)</span>}
+                  <span className="text-xs text-slate-500">Consulta: {fechaClinica(atenciones?.find((atencion) => atencion.id === imagen.atencion_id)?.created_at ?? imagen.created_at)}</span>
+                </li>)}
               </ul>
             ) : <p className="mt-3 text-sm text-slate-500">No hay imágenes asociadas a las atenciones.</p>}
+            {atencionesPropias.length > 0 && <details className="print-hidden mt-4">
+              <summary className="cursor-pointer text-sm font-medium text-teal-700">Adjuntar imágenes a una consulta</summary>
+              <ImagenAtencionForm pacienteId={id} atenciones={atencionesPropias.map((atencion) => ({ id: atencion.id, fecha: fechaClinica(atencion.created_at) }))} />
+            </details>}
           </Card>
         </aside>
       </div>
