@@ -107,7 +107,7 @@ export function PatientForm({ action, paciente, regiones = [], comunas = [], con
               <option value="no_especificado">Sin especificar</option>
               <option value="femenino">Femenino</option>
               <option value="masculino">Masculino</option>
-              <option value="intersexual">Intersexual</option>
+              {paciente?.sexo_biologico === "intersexual" && <option value="intersexual">Intersexual</option>}
             </select>
           </label>
           <Input id="telefono" name="telefono" type="tel" label="Teléfono" defaultValue={paciente?.telefono ?? ""} error={errores.telefono} />
