@@ -21,4 +21,4 @@ export const atencionSchema = z.object({
 export type AtencionInput = z.infer<typeof atencionSchema>;
 
 // La acción devuelve, además del estado del formulario, la evaluación calculada en el servidor.
-export type EstadoAtencion = FormState & { evaluacion?: ResultadoEvaluacion };
+export type EstadoAtencion = FormState & { evaluacion?: ResultadoEvaluacion; atencionId?: string };

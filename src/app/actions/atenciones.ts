@@ -96,10 +96,11 @@ export async function guardarAtencion(_prev: EstadoAtencion, formData: FormData)
       estado: "pendiente",
     });
     if (errorDerivacion) {
-      return { error: `La atención quedó registrada, pero no pudimos crear la derivación: ${describirError(errorDerivacion)}` };
+      revalidatePath(`/patients/${parsed.data.pacienteId}`);
+      return { atencionId: atencion.id, error: `La atención quedó registrada, pero no pudimos crear la derivación: ${describirError(errorDerivacion)}` };
     }
   }
 
   revalidatePath("/patients/[id]", "page");
-  return { success: true, evaluacion };
+  return { success: true, evaluacion, atencionId: atencion.id };
 }

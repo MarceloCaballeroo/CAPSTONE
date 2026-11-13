@@ -7,6 +7,7 @@ import { Button } from "@/components/common/Button";
 import { RiesgoBadge } from "@/components/common/RiesgoBadge";
 import { ESPECIALIDADES_DERIVACION, evaluarRiesgoYDerivacion, textoControlSugerido } from "@/lib/clinical-rules";
 import type { EstadoAtencion } from "@/lib/validations/atenciones";
+import { ImagenAtencionForm } from "@/features/patients/ImagenAtencionForm";
 
 export type Cie10Opcion = { codigo: string; nombre_diagnostico: string; categoria: string };
 
@@ -43,6 +44,22 @@ export function AtencionForm({ action, pacienteId, catalogo }: AtencionFormProps
     }).bloquearProcedimientoInvasivo,
   );
   const [procedimientoInvasivo, setProcedimientoInvasivo] = useState(false);
+
+  if (state.atencionId) {
+    return (
+      <div className="grid gap-4">
+        {state.error ? <Alert>{state.error}</Alert> : <Alert variant="success">Atención registrada.</Alert>}
+        {state.evaluacion && <>
+          <RiesgoBadge nivel={state.evaluacion.nivelRiesgo} />
+          <p className="text-sm text-slate-600">Control sugerido: {textoControlSugerido(state.evaluacion.nivelRiesgo)}.</p>
+          {state.evaluacion.alertas.map((alerta) => <Alert key={alerta}>{alerta}</Alert>)}
+          {state.evaluacion.requiereDerivacion && <p className="text-sm text-slate-600">Se generó una derivación automática.</p>}
+        </>}
+        <ImagenAtencionForm pacienteId={pacienteId} atencionId={state.atencionId} />
+        <Link className="text-sm font-medium text-teal-700 underline" href={`/patients/${pacienteId}`}>Volver a la ficha del paciente</Link>
+      </div>
+    );
+  }
 
   function actualizarEvaluacion(evento: FormEvent<HTMLFormElement>) {
     const datos = new FormData(evento.currentTarget);
@@ -147,27 +164,10 @@ export function AtencionForm({ action, pacienteId, catalogo }: AtencionFormProps
           Observaciones
           <textarea id="observaciones" name="observaciones" rows={4} maxLength={2000} className="rounded-lg border border-slate-300 bg-transparent px-3 py-2 font-normal text-slate-900 outline-none placeholder:text-slate-400 focus:border-teal-700 focus:ring-2 focus:ring-teal-100" placeholder="Hallazgos, tratamiento realizado o indicaciones." />
         </label>
-        <p className="text-sm text-slate-500">El grupo de riesgo IWGDF y la derivación se calculan en el servidor al guardar.</p>
+        <p className="text-sm text-slate-500">El grupo de riesgo IWGDF y la derivación se calculan en el servidor al guardar. Después podrás adjuntar fotos o imágenes a esta consulta.</p>
       </section>
 
       {state.error && <Alert>{state.error}</Alert>}
-      {state.success && state.evaluacion && (
-        <div className="grid gap-3 border-l-2 border-teal-700/40 bg-teal-50 px-4 py-3 text-sm text-teal-900">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="font-medium">Atención registrada.</span>
-            <RiesgoBadge nivel={state.evaluacion.nivelRiesgo} />
-          </div>
-          <p>Control sugerido: {textoControlSugerido(state.evaluacion.nivelRiesgo)}.</p>
-          {state.evaluacion.alertas.length > 0 && (
-            <ul className="list-disc pl-5">
-              {state.evaluacion.alertas.map((alerta) => <li key={alerta}>{alerta}</li>)}
-            </ul>
-          )}
-          {state.evaluacion.requiereDerivacion && <p>Se generó una derivación automática.</p>}
-          <Link className="font-medium underline underline-offset-4" href={`/patients/${pacienteId}`}>Volver a la ficha del paciente</Link>
-        </div>
-      )}
-
       <div className="flex flex-wrap justify-end gap-3">
         <Link href={`/patients/${pacienteId}`}><Button variant="secondary" type="button">Cancelar</Button></Link>
         <Button type="submit" isLoading={isPending}>{isPending ? "Guardando" : "Guardar atención"}</Button>
