@@ -4,9 +4,15 @@ La aplicación permite guardar una atención y luego adjuntar imágenes opcional
 
 Se reutiliza `public.imagen_clinica`. No hay columnas nuevas ni cambios en la evaluación clínica. El flujo guarda una ruta relativa en `url_storage`, no una URL pública. La lectura pasa por `/api/imagenes/[id]`: verifica sesión, usuario activo, RLS y permisos de Storage. Las respuestas llevan `Cache-Control: private, no-store` y no utilizan el optimizador de imágenes ni enlaces firmados reutilizables fuera de la sesión.
 
-## Configuración pendiente en Supabase
+## Configuración aplicada en Supabase
 
-**La configuración está preparada, no aplicada ni comprobada en el proyecto principal.** Antes de desplegar el código, inspeccionar las políticas actuales y las restricciones de `imagen_clinica` con el responsable de la base. La configuración siguiente fue aprobada para preparación, no para su ejecución en producción.
+**Aplicada y verificada parcialmente el 13 de noviembre de 2026** en `ulneqosqaiaknbrjyuzg`, con autorización del responsable. El bucket privado y los permisos de inserción ya están habilitados. Hay una limitación confirmada de revocación inmediata en la caché de Storage; consultar [reporte de pruebas](imagenes-clinicas-reporte.md). El usuario confirmó que la carga funciona desde la interfaz local; no se verificaron todos los escenarios manuales.
+
+Migraciones registradas en Supabase:
+- `20261113035916_habilitar_storage_imagenes_clinicas_privadas`: creación del bucket y siete políticas de Storage.
+- `20261113040127_habilitar_registro_imagenes_solo_autor`: INSERT sobre cuatro columnas y política restrictiva del autor, reproducida en `scripts/supabase-imagenes-clinicas-registro.sql`.
+
+Los pasos siguientes sirven para otro entorno. **No volver a ejecutar estos scripts en el proyecto ya configurado.**
 
 1. Revisar en modo de solo lectura el bucket y sus políticas:
 
@@ -40,7 +46,7 @@ Las políticas propuestas permiten lectura a miembros activos del tenant de la a
 
 ## Verificación
 
-Verificación local del 13 de noviembre de 2026: **41 pruebas existentes y 19 pruebas nuevas aprobadas**, ESLint sin errores y compilación de producción `npm.cmd run build` completada, incluida la comprobación de TypeScript. No se ejecutaron las políticas SQL ni cargas contra Supabase. No se hizo una prueba manual con sesión y pacientes reales.
+Verificación local previa: **41 pruebas existentes y 19 pruebas nuevas aprobadas**, ESLint sin errores y compilación de producción completada. Posteriormente se aplicaron las políticas y se probaron RLS, auditoría y cargas HTTP reales con datos sintéticos. La comprobación HTTP de revocación inmediata falló por el comportamiento de caché documentado por Supabase. No se hizo una prueba manual de la interfaz con pacientes reales.
 
 Pruebas locales sin acceso a Supabase:
 
@@ -64,4 +70,6 @@ Antes de considerar la función lista en el proyecto principal, verificar en un 
 9. Comprobar el evento de auditoría del INSERT en `imagen_clinica`, actor y tenant. No modificar el trigger para ejecutar esta prueba.
 10. Revisar imágenes antiguas y una atención cuyo registro tuvo un fallo de derivación. Ese fallo se sigue mostrando; la imagen no lo oculta ni lo corrige.
 
-Las pruebas locales simulan las respuestas del servicio. No prueban los triggers ni la ejecución real de estas políticas. Referencias: [acceso a Storage](https://supabase.com/docs/guides/storage/security/access-control), [buckets privados](https://supabase.com/docs/guides/storage/buckets/fundamentals).
+`scripts/imagenes-clinicas.test.mjs` simula las respuestas del servicio. `scripts/imagenes-clinicas-rls.test.sql` ejecuta RLS y auditoría en una transacción revertida. `scripts/imagenes-clinicas-storage.test.mjs` hace pruebas HTTP interactivas con datos sintéticos y requiere ejecutar los bloques SQL que imprime mediante una conexión administrativa; deja el autor inactivo y su organización para conservar la auditoría. No ejecutarlo desatendido ni sobre datos reales. Su caso de revocación inmediata actualmente detecta la limitación indicada en el reporte y termina con error.
+
+Referencias: [acceso a Storage](https://supabase.com/docs/guides/storage/security/access-control), [buckets privados](https://supabase.com/docs/guides/storage/buckets/fundamentals).
